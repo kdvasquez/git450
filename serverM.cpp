@@ -6,11 +6,13 @@
 #include <arpa/inet.h> // for inet_pton
 
 #define LOCALHOST "127.0.0.1"  // Define localhost as a global constant
-#define UDP_PORT 24985
-#define TCP_PORT 25985
+#define UDP_PORT 24985         // UDP port for serverM
+#define TCP_PORT 25985         // TCP port for serverM
+
 
 using namespace std;
 
+// Function to forward a message to another server
 int forwardToServer(int server_port, const char *message) {
     int sock;
     struct sockaddr_in serverAddr;
@@ -136,8 +138,12 @@ int main() {
             buffer[bytesReceived] = '\0';
             cout << "Received UDP message: " << buffer << endl;
 
-            // Forward the message to serverA, for example
-            forwardToServer(21985, buffer);  // Using LOCALHOST within forwardToServer
+            // Forward the message to serverA (port 21985)
+            // Existing behavior for serverA
+            forwardToServer(21985, buffer);  // Forwarding to serverA
+
+            // Forward the message to serverR (port 22985)
+            forwardToServer(22985, buffer);  // Forwarding to serverR
         }
 
         // --- Handle TCP Connections ---
@@ -158,8 +164,12 @@ int main() {
                     buffer[bytesRead] = '\0';
                     cout << "Received TCP message: " << buffer << endl;
 
-                    // Forward the message to serverA, for example
-                    forwardToServer(21985, buffer);  // Using LOCALHOST within forwardToServer
+                    // Forward the message to serverA (port 21985)
+                    // Existing behavior for serverA
+                    forwardToServer(21985, buffer);  // Forwarding to serverA
+
+                    // Forward the message to serverR (port 22985)
+                    forwardToServer(22985, buffer);  // Forwarding to serverR
                 }
                 close(newTcpSocket); // Close the connection after responding
             }

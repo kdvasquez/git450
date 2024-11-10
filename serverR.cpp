@@ -1,65 +1,57 @@
 #include <iostream>
-#include <sys/socket.h>  // Socket functions
-#include <netinet/in.h>  // Address structures
-#include <unistd.h>      // Close function
-#include <cstring>       // String functions
-using namespace std;
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <cstring>
+#include <arpa/inet.h>
 
-#define PORT 22985 // Set the UDP port number
-#define SERVER_ADDRESS "127.0.0.1"  // Server IP address
+#define LOCALHOST "127.0.0.1"
+#define SERVER_R_PORT 22985
+
+using namespace std;
 
 int main() {
     int serverSocket;
-    struct sockaddr_in address;
-    char buffer[1024] = {0}; // Buffer for receiving data
-    int addrlen = sizeof(address);
+    struct sockaddr_in serverAddr, clientAddr;
+    socklen_t addrLen = sizeof(clientAddr);
+    char buffer[1024];
 
-    // Step 1: Create UDP socket (AF_INET for IPv4, SOCK_DGRAM for UDP)
-    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    // Setup UDP socket
+    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);  // Use SOCK_DGRAM for UDP
     if (serverSocket < 0) {
-        cout << "Socket creation failed!" << endl;
+        cerr << "Error creating socket!" << endl;
         return -1;
     }
-    cout << "UDP socket created on port " << PORT << endl;
 
-    // Step 2: Define the address structure for binding
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(SERVER_R_PORT);
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
 
-    // Step 3: Bind the socket to the specified port
-    if (bind(serverSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        cerr << "Binding failed!" << endl;
+    if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        cerr << "Bind failed!" << endl;
         close(serverSocket);
         return -1;
     }
-    cout << "Server R is up and running using UDP on port " << PORT << endl;
 
-    // Step 4: Wait to receive data (no listen/accept in UDP)
+    cout << "Server R is up and running on port " << SERVER_R_PORT << endl;
+
     while (true) {
-        cout << "Waiting for data from a client..." << endl;
-        
-        // Receive data from a client
-        int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0,
-                                     (struct sockaddr*)&address, (socklen_t*)&addrlen);
-        if (bytesReceived < 0) {
-            cerr << "Failed to receive data!" << endl;
-            close(serverSocket);
-            return -1;
+        // Receive the message from the client
+        int bytesRead = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0,
+                                 (struct sockaddr *)&clientAddr, &addrLen);
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            cout << "Server R has received a request: " << buffer << endl;
+
+            // Simulate a response (e.g., returning a document list or success message)
+            const char *response = "Document 1, Document 2, Document 3";  // Example response
+            sendto(serverSocket, response, strlen(response), 0, 
+                   (struct sockaddr *)&clientAddr, addrLen);
+
+            cout << "Server R has finished sending the response." << endl;
         }
-
-        buffer[bytesReceived] = '\0';  // Null-terminate the received data
-        cout << "Received message: " << buffer << endl;
-
-        // Send a response back to the client
-        const char* response = "Message received!";
-        sendto(serverSocket, response, strlen(response), 0,
-               (struct sockaddr*)&address, addrlen);
-        cout << "Response sent to client." << endl;
     }
 
-    // Step 5: Close the socket after the loop (though this will run infinitely)
-    close(serverSocket);
-
+    close(serverSocket);  // Close the socket when the server shuts down
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <vector>
+#include <string>
 
 #define SERVER_ADDRESS "127.0.0.1"  // Server IP address (localhost in this case)
 
@@ -75,34 +76,94 @@ int main(int argc, char *argv[]) {
     }
     cout << "Client is using local port: " << ntohs(local_addr.sin_port) << endl;
 
-    // Loop through each server port and send credentials
-    for (int port : serverPorts) {
-        server_addr.sin_port = htons(port); // Set server port dynamically
+    // Send credentials to serverA once and wait for the response
+    server_addr.sin_port = htons(21985); // Assuming Server A is on port 21985
+    string credentials = username + " " + encryptedPassword;
+    cout << "Sending credentials to server on port 21985: " << credentials << endl;
 
-        // Prepare credentials with encrypted password
-        string credentials = username + " " + encryptedPassword;
-        cout << "Sending credentials to server on port " << port << ": " << credentials << endl;
+    int sent_bytes = sendto(sockfd, credentials.c_str(), credentials.size(), MSG_CONFIRM,
+                            (const struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (sent_bytes < 0) {
+        perror("Send failed");
+        close(sockfd);
+        return -1;
+    }
 
-        int sent_bytes = sendto(sockfd, credentials.c_str(), credentials.size(), MSG_CONFIRM,
-                                (const struct sockaddr *)&server_addr, sizeof(server_addr));
-        if (sent_bytes < 0) {
-            perror("Send failed");
-            continue; // Try the next server if sending fails
+    // Wait for a response from serverA to grant access
+    socklen_t server_len = sizeof(server_addr);
+    int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&server_addr, &server_len);
+    if (n < 0) {
+        perror("Receive failed");
+        close(sockfd);
+        return -1;
+    }
+
+    buffer[n] = '\0';
+    cout << "Server response from port 21985: " << buffer << endl;
+
+    // If the response indicates member access granted, proceed
+    if (string(buffer) == "AUTH_SUCCESS") {
+        cout << "You have been granted member access." << endl;
+
+        // Start accepting commands
+        while (true) {
+            cout << "Please enter the command:\n"
+                 << "<lookup <username>>\n"
+                 << "<push <filename>>\n"
+                 << "<remove <filename>>\n"
+                 << "<deploy>\n"
+                 << "<log>" << endl;
+
+            string command;
+            getline(cin, command);
+
+            // Check command format and process accordingly
+            if (command.find("lookup ") == 0) {
+                string lookupCommand = command; // Expects the format "lookup <username>"
+                cout << "Sending lookup command to Server M: " << lookupCommand << endl;
+
+                // Send lookup request to Server R (port 21987)
+                server_addr.sin_port = htons(21987);  // Assuming Server R is on port 21987
+                sent_bytes = sendto(sockfd, lookupCommand.c_str(), lookupCommand.size(), MSG_CONFIRM,
+                                    (const struct sockaddr *)&server_addr, sizeof(server_addr));
+                if (sent_bytes < 0) {
+                    perror("Send lookup failed");
+                    close(sockfd);
+                    return -1;
+                }
+
+                n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&server_addr, (socklen_t *)&server_addr);
+                if (n < 0) {
+                    perror("Receive failed");
+                    close(sockfd);
+                    return -1;
+                }
+
+                buffer[n] = '\0';
+                cout << "Server response from Server R: " << buffer << endl;
+            }
+            else if (command.find("push ") == 0) {
+                // Implement 'push' logic
+                cout << "Push logic goes here" << endl;
+            }
+            else if (command.find("remove ") == 0) {
+                // Implement 'remove' logic
+                cout << "Remove logic goes here" << endl;
+            }
+            else if (command == "deploy") {
+                // Implement 'deploy' logic
+                cout << "Deploy logic goes here" << endl;
+            }
+            else if (command == "log") {
+                // Implement 'log' logic
+                cout << "Log logic goes here" << endl;
+            }
+            else {
+                cout << "Invalid command. Please try again." << endl;
+            }
         }
-
-        cout << "Message sent successfully to server on port " << port << "." << endl;
-
-        // Wait for a response from the server (optional, depends on your protocol)
-        socklen_t server_len = sizeof(server_addr);
-        int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&server_addr, &server_len);
-        if (n < 0) {
-            perror("Receive failed");
-            continue;
-        }
-
-        // Null-terminate and display the response from the server
-        buffer[n] = '\0';
-        cout << "Server response from port " << port << ": " << buffer << endl;
+    } else {
+        cout << "Access denied." << endl;
     }
 
     // Close the socket
