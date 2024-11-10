@@ -45,6 +45,8 @@ int main(int argc, char *argv[]) {
     int sockfd;
     struct sockaddr_in server_addr;
     char buffer[1024];
+    struct sockaddr_in local_addr;
+    socklen_t addrlen = sizeof(local_addr);
 
     // Array of server ports for serverM, serverA, serverR, and serverD
     vector<int> serverPorts = {21985, 21986, 21987, 21988}; // Replace with actual server ports
@@ -63,6 +65,15 @@ int main(int argc, char *argv[]) {
         close(sockfd);
         return -1;
     }
+
+    // Get the locally-bound address information (optional)
+    int getsock_check = getsockname(sockfd, (struct sockaddr *)&local_addr, &addrlen);
+    if (getsock_check == -1) {
+        perror("getsockname failed");
+        close(sockfd);
+        return -1;
+    }
+    cout << "Client is using local port: " << ntohs(local_addr.sin_port) << endl;
 
     // Loop through each server port and send credentials
     for (int port : serverPorts) {

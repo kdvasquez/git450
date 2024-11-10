@@ -6,6 +6,7 @@
 using namespace std;
 
 #define PORT 22985 // Set the UDP port number
+#define SERVER_ADDRESS "127.0.0.1"  // Server IP address
 
 int main() {
     int serverSocket;

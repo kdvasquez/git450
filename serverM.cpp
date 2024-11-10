@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -6,12 +5,13 @@
 #include <cstring>
 #include <arpa/inet.h> // for inet_pton
 
+#define LOCALHOST "127.0.0.1"  // Define localhost as a global constant
 #define UDP_PORT 24985
 #define TCP_PORT 25985
 
 using namespace std;
 
-int forwardToServer(const char *server_ip, int server_port, const char *message) {
+int forwardToServer(int server_port, const char *message) {
     int sock;
     struct sockaddr_in serverAddr;
     
@@ -25,8 +25,8 @@ int forwardToServer(const char *server_ip, int server_port, const char *message)
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(server_port);
 
-    // Convert IP address to binary form
-    if (inet_pton(AF_INET, server_ip, &serverAddr.sin_addr) <= 0) {
+    // Convert IP address to binary form using LOCALHOST
+    if (inet_pton(AF_INET, LOCALHOST, &serverAddr.sin_addr) <= 0) {
         cerr << "Invalid address or address not supported" << endl;
         close(sock);
         return -1;
@@ -136,8 +136,8 @@ int main() {
             buffer[bytesReceived] = '\0';
             cout << "Received UDP message: " << buffer << endl;
 
-            // Forward the message to another server (e.g., serverA, serverR, or serverD)
-            forwardToServer("127.0.0.1", 21985, buffer);  // Forward to serverA's IP and port
+            // Forward the message to serverA, for example
+            forwardToServer(21985, buffer);  // Using LOCALHOST within forwardToServer
         }
 
         // --- Handle TCP Connections ---
@@ -158,8 +158,8 @@ int main() {
                     buffer[bytesRead] = '\0';
                     cout << "Received TCP message: " << buffer << endl;
 
-                    // Forward the message to another server (e.g., serverA, serverR, or serverD)
-                    forwardToServer("127.0.0.1", 21985, buffer);  // Forward to serverA's IP and port
+                    // Forward the message to serverA, for example
+                    forwardToServer(21985, buffer);  // Using LOCALHOST within forwardToServer
                 }
                 close(newTcpSocket); // Close the connection after responding
             }
