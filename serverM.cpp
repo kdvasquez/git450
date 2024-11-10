@@ -1,13 +1,59 @@
+
 #include <iostream>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <arpa/inet.h> // for inet_pton
 
-#define UDP_PORT 24985 // Port for UDP server
-#define TCP_PORT 25985 // Port for TCP server
+#define UDP_PORT 24985
+#define TCP_PORT 25985
 
 using namespace std;
+
+int forwardToServer(const char *server_ip, int server_port, const char *message) {
+    int sock;
+    struct sockaddr_in serverAddr;
+    
+    // Create socket
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        cerr << "Error creating socket for redirection!" << endl;
+        return -1;
+    }
+
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(server_port);
+
+    // Convert IP address to binary form
+    if (inet_pton(AF_INET, server_ip, &serverAddr.sin_addr) <= 0) {
+        cerr << "Invalid address or address not supported" << endl;
+        close(sock);
+        return -1;
+    }
+
+    // Connect to the server
+    if (connect(sock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+        cerr << "Connection to server failed!" << endl;
+        close(sock);
+        return -1;
+    }
+
+    // Send message to the forwarded server
+    send(sock, message, strlen(message), 0);
+
+    // Receive the response
+    char buffer[1024] = {0};
+    int bytesReceived = recv(sock, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        cout << "Received from forwarded server: " << buffer << endl;
+    }
+
+    // Close the socket after communication
+    close(sock);
+    return 0;
+}
 
 int main() {
     // --- UDP Setup ---
@@ -16,7 +62,6 @@ int main() {
     int udpOpt = 1;
     socklen_t addrLen = sizeof(udpAddress);
 
-    // Create UDP socket
     udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (udpSocket < 0) {
         cerr << "Failed to create UDP socket!" << endl;
@@ -24,14 +69,12 @@ int main() {
     }
     cout << "UDP socket created on port " << UDP_PORT << endl;
 
-    // Set socket options for UDP
     if (setsockopt(udpSocket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &udpOpt, sizeof(udpOpt)) < 0) {
         cerr << "Failed to set UDP socket options!" << endl;
         close(udpSocket);
         return -1;
     }
 
-    // Define the UDP address and bind it
     udpAddress.sin_family = AF_INET;
     udpAddress.sin_addr.s_addr = INADDR_ANY;
     udpAddress.sin_port = htons(UDP_PORT);
@@ -41,31 +84,28 @@ int main() {
         close(udpSocket);
         return -1;
     }
-    cout << "Server M is up and running using UDP on port  " << UDP_PORT << endl;
+    cout << "Server M is up and running using UDP on port " << UDP_PORT << endl;
 
     // --- TCP Setup ---
     int tcpSocket, newTcpSocket;
     struct sockaddr_in tcpAddress;
     int tcpOpt = 1;
 
-    // Create TCP socket
     tcpSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (tcpSocket < 0) {
         cerr << "Failed to create TCP socket!" << endl;
-        close(udpSocket); // Close UDP socket on failure
+        close(udpSocket);
         return -1;
     }
     cout << "TCP socket created on port " << TCP_PORT << endl;
 
-    // Set socket options for TCP
     if (setsockopt(tcpSocket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &tcpOpt, sizeof(tcpOpt)) < 0) {
         cerr << "Failed to set TCP socket options!" << endl;
         close(tcpSocket);
-        close(udpSocket); // Close UDP socket on failure
+        close(udpSocket);
         return -1;
     }
 
-    // Define the TCP address and bind it
     tcpAddress.sin_family = AF_INET;
     tcpAddress.sin_addr.s_addr = INADDR_ANY;
     tcpAddress.sin_port = htons(TCP_PORT);
@@ -78,7 +118,6 @@ int main() {
     }
     cout << "TCP server bound to port " << TCP_PORT << endl;
 
-    // Listen on TCP socket for incoming connections
     if (listen(tcpSocket, 3) < 0) {
         cerr << "Failed to listen on TCP socket!" << endl;
         close(tcpSocket);
@@ -97,9 +136,8 @@ int main() {
             buffer[bytesReceived] = '\0';
             cout << "Received UDP message: " << buffer << endl;
 
-            // Send a response (optional)
-            const char *udpResponse = "Hello from UDP server!";
-            sendto(udpSocket, udpResponse, strlen(udpResponse), 0, (struct sockaddr *)&clientAddress, addrLen);
+            // Forward the message to another server (e.g., serverA, serverR, or serverD)
+            forwardToServer("127.0.0.1", 21985, buffer);  // Forward to serverA's IP and port
         }
 
         // --- Handle TCP Connections ---
@@ -120,9 +158,8 @@ int main() {
                     buffer[bytesRead] = '\0';
                     cout << "Received TCP message: " << buffer << endl;
 
-                    // Respond to TCP client
-                    const char *tcpResponse = "Hello from TCP server!";
-                    send(newTcpSocket, tcpResponse, strlen(tcpResponse), 0);
+                    // Forward the message to another server (e.g., serverA, serverR, or serverD)
+                    forwardToServer("127.0.0.1", 21985, buffer);  // Forward to serverA's IP and port
                 }
                 close(newTcpSocket); // Close the connection after responding
             }

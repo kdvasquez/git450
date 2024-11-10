@@ -1,11 +1,28 @@
+
 #include <iostream>
-#include <sys/socket.h>  // Socket functions
-#include <netinet/in.h>  // Address structures
-#include <unistd.h>      // Close function
-#include <cstring>       // String functions
+#include <fstream>
+#include <cstring>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+#define PORT 21985 // Set the UDP port number for serverA
+
 using namespace std;
 
-#define PORT 21985 // Set the UDP port number
+// Function to authenticate the username and password
+bool authenticate(const string& username, const string& password) {
+    ifstream file("members.txt");
+    string line;
+    
+    // Search for the matching credentials in the "member.txt"
+    while (getline(file, line)) {
+        if (line == username + " " + password) {
+            return true; // Credentials match
+        }
+    }
+    return false; // No match found
+}
 
 int main() {
     int serverSocket;
@@ -38,7 +55,7 @@ int main() {
     while (true) {
         cout << "Waiting for data from a client..." << endl;
         
-        // Receive data from a client
+        // Receive data from serverM (authentication request)
         int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0,
                                      (struct sockaddr*)&address, (socklen_t*)&addrlen);
         if (bytesReceived < 0) {
@@ -50,11 +67,20 @@ int main() {
         buffer[bytesReceived] = '\0';  // Null-terminate the received data
         cout << "Received message: " << buffer << endl;
 
-        // Send a response back to the client
-        const char* response = "Message received!";
+        // Split the received message into username and password
+        string credentials(buffer);
+        size_t spacePos = credentials.find(" ");
+        string username = credentials.substr(0, spacePos);
+        string password = credentials.substr(spacePos + 1);
+
+        // Authenticate the received credentials
+        bool isAuthenticated = authenticate(username, password);
+        const char* response = isAuthenticated ? "AUTH_SUCCESS" : "AUTH_FAILURE";
+
+        // Send the authentication result back to serverM
         sendto(serverSocket, response, strlen(response), 0,
                (struct sockaddr*)&address, addrlen);
-        cout << "Response sent to client." << endl;
+        cout << "Authentication result sent to serverM: " << response << endl;
     }
 
     // Step 5: Close the socket after the loop (though this will run infinitely)
