@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -15,7 +14,7 @@ bool authenticate(const string& username, const string& password) {
     ifstream file("members.txt");
     string line;
     
-    // Search for the matching credentials in the "member.txt"
+    // Search for the matching credentials in the "members.txt"
     while (getline(file, line)) {
         if (line == username + " " + password) {
             return true; // Credentials match
@@ -73,14 +72,29 @@ int main() {
         string username = credentials.substr(0, spacePos);
         string password = credentials.substr(spacePos + 1);
 
+        // Display the received username and password (with password masked)
+        cout << "ServerA received username " << username << " and password *****" << endl;
+
         // Authenticate the received credentials
         bool isAuthenticated = authenticate(username, password);
-        const char* response = isAuthenticated ? "AUTH_SUCCESS" : "AUTH_FAILURE";
-
-        // Send the authentication result back to serverM
-        sendto(serverSocket, response, strlen(response), 0,
-               (struct sockaddr*)&address, addrlen);
-        cout << "Authentication result sent to serverM: " << response << endl;
+        
+        if (isAuthenticated) {
+            // If the credentials are valid, output member authentication
+            cout << "Member " << username << " has been authenticated." << endl;
+            const char* response = "AUTH_SUCCESS";
+            // Send the authentication result back to serverM
+            sendto(serverSocket, response, strlen(response), 0,
+                   (struct sockaddr*)&address, addrlen);
+            cout << "Authentication result sent to serverM: " << response << endl;
+        } else {
+            // If authentication fails, output error message with the username
+            cout << "The username " << username << " or password ****** is incorrect" << endl;
+            const char* response = "AUTH_FAILURE";
+            // Send the authentication failure back to serverM
+            sendto(serverSocket, response, strlen(response), 0,
+                   (struct sockaddr*)&address, addrlen);
+            cout << "Authentication result sent to serverM: " << response << endl;
+        }
     }
 
     // Step 5: Close the socket after the loop (though this will run infinitely)
