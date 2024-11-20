@@ -5,6 +5,7 @@
 
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
+#define PORT_R_UDP 22985  // Server R's UDP port
 #define BUFFER_SIZE 1024
 using namespace std;
 
@@ -53,41 +54,75 @@ int main() {
         string username = credentials.substr(0, spacePos);
         string password = credentials.substr(spacePos + 1);
 
-        // Print formatted message
-        std::cout << "Server M has received username <" << username << "> and password ******" << std::endl;
+        // Print formatted message when receiving a lookup request
+        std::cout << "The main server has received a lookup request from <" << username << "> to lookup <" << username << "'s repository> using TCP over port " << PORT_M_TCP << std::endl;
 
-        // Forward request to ServerA via UDP
-        int udpSock;
-        struct sockaddr_in serverAAddr;
-        udpSock = socket(AF_INET, SOCK_DGRAM, 0);
-        if (udpSock < 0) {
-            perror("UDP socket creation failed");
-            close(clientSock);
-            continue;
+        // Check if the command is "lookup" and forward it to ServerR
+        if (credentials.substr(0, 6) == "lookup") {
+            // Forward request to ServerR via UDP
+            int udpSockR;
+            struct sockaddr_in serverRAddr;
+            udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+            if (udpSockR < 0) {
+                perror("UDP socket creation failed for Server R");
+                close(clientSock);
+                continue;
+            }
+
+            serverRAddr.sin_family = AF_INET;
+            serverRAddr.sin_port = htons(PORT_R_UDP);
+            serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");  // Server R's address
+
+            sendto(udpSockR, buffer, strlen(buffer), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+
+            // Print message when sending the request to ServerR
+            std::cout << "The main server has sent the lookup request to serverR." << std::endl;
+
+            // Receive response from ServerR
+            memset(buffer, 0, BUFFER_SIZE);
+            socklen_t serverRLen = sizeof(serverRAddr);
+            recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
+
+            // Print message when response is received from ServerR
+            std::cout << "Response received from R: " << buffer << std::endl;
+
+            // Send response back to the client
+            write(clientSock, buffer, strlen(buffer));
+
+            close(udpSockR);
+        } else {
+            // Forward request to ServerA via UDP (default case)
+            int udpSockA;
+            struct sockaddr_in serverAAddr;
+            udpSockA = socket(AF_INET, SOCK_DGRAM, 0);
+            if (udpSockA < 0) {
+                perror("UDP socket creation failed for Server A");
+                close(clientSock);
+                continue;
+            }
+
+            serverAAddr.sin_family = AF_INET;
+            serverAAddr.sin_port = htons(PORT_A_UDP);
+            serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");  // Server A's address
+
+            sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
+
+            // Receive response from ServerA
+            memset(buffer, 0, BUFFER_SIZE);
+            socklen_t serverALen = sizeof(serverAAddr);
+            recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
+
+            std::cout << "Server M received response from Server A: " << buffer << std::endl;
+
+            // Send response back to the client
+            write(clientSock, buffer, strlen(buffer));
+
+            close(udpSockA);
         }
 
-        serverAAddr.sin_family = AF_INET;
-        serverAAddr.sin_port = htons(PORT_A_UDP);
-        serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-        sendto(udpSock, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
-
-        // Receive response from ServerA
-        memset(buffer, 0, BUFFER_SIZE);
-        socklen_t serverALen = sizeof(serverAAddr);
-        recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
-
-        std::cout << "Server M received response from Server A: " << buffer << std::endl;
-
-        // Send response back to the client
-        write(clientSock, buffer, strlen(buffer));
-
         close(clientSock);
-        close(udpSock);
     }
 
     close(serverSock);
     return 0;
 }
-
-
