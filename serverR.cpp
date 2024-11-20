@@ -1,92 +1,103 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <string>
-#include <vector>
 #include <cstring>
-#include <cstdlib>
-#include <unistd.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <vector>
 
+#define PORT_R_UDP 22985  // ServerR listens on port 22985
 #define BUFFER_SIZE 1024
-#define UDP_PORT 22985
+#define FILENAME_FILE "filenames.txt" // The filename to check for usernames
+using namespace std;
 
-void handleLookup(const std::string& username, int sockfd, struct sockaddr_in& clientAddr) {
-    std::ifstream file("filenames.txt"); // Ensure this matches your actual file name
-    std::string line, response;
-    bool found = false;
-
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string fileUsername, filename;
-
-        if (iss >> fileUsername >> filename) {
-            if (fileUsername == username) {
-                response += filename + "\n"; // Collect all matching filenames
-                found = true;
+// Function to search for files by username in filenames.txt
+vector<string> getFilesForUser(const string &username) {
+    vector<string> files;
+    ifstream file(FILENAME_FILE);
+    string line;
+    while (getline(file, line)) {
+        istringstream iss(line);
+        string user, filename;
+        if (iss >> user >> filename) {
+            if (user == username) {
+                files.push_back(filename);
             }
         }
     }
-
-    if (!found) {
-        response = "Username not found!";
-    }
-
-    // Send the response back to the client
-    sendto(sockfd, response.c_str(), response.size(), 0, (struct sockaddr*)&clientAddr, sizeof(clientAddr));
+    return files;
 }
 
 int main() {
-    int sockfd;
+    int udpSock;
     struct sockaddr_in serverAddr, clientAddr;
     char buffer[BUFFER_SIZE];
-    socklen_t clientAddrLen = sizeof(clientAddr);
+    socklen_t clientLen = sizeof(clientAddr);
 
-    // Create a UDP socket
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
+    // Create UDP socket
+    udpSock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udpSock < 0) {
+        perror("UDP socket creation failed");
+        return -1;
     }
 
     // Configure server address
     serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(PORT_R_UDP);
     serverAddr.sin_addr.s_addr = INADDR_ANY;
-    serverAddr.sin_port = htons(UDP_PORT);
 
-    // Bind the socket
-    if (bind(sockfd, (const struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+    // Bind the UDP socket
+    if (bind(udpSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("Bind failed");
-        close(sockfd);
-        exit(EXIT_FAILURE);
+        close(udpSock);
+        return -1;
     }
 
-    std::cout << "ServerR is running and listening on port " << UDP_PORT << std::endl;
+    cout << "Server R: Listening for requests on UDP port " << PORT_R_UDP << endl;
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);
 
-        // Receive a command from the client
-        int n = recvfrom(sockfd, buffer, BUFFER_SIZE, 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
-        if (n < 0) {
-            perror("Receive failed");
+        // Receive the request from ServerM
+        ssize_t len = recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&clientAddr, &clientLen);
+        if (len < 0) {
+            perror("Failed to receive data");
             continue;
         }
 
-        buffer[n] = '\0'; // Null-terminate the received string
-        std::cout << "Received command: " << buffer << std::endl;
+        string request(buffer);
+        cout << "Server R received request: " << request << endl;
 
-        // Parse the command
-        std::string command(buffer);
-        if (command.substr(0, 6) == "lookup") {
-            std::string username = command.substr(7); // Extract username
-            handleLookup(username, sockfd, clientAddr);
-        } else {
-            std::string response = "Invalid command!";
-            sendto(sockfd, response.c_str(), response.size(), 0, (struct sockaddr*)&clientAddr, clientAddrLen);
+        // Check if the request is a lookup and contains a username
+        if (request.find("lookup") != string::npos) {
+            stringstream ss(request);
+            string command, username;
+            ss >> command >> username;
+
+            // Get the files associated with the username
+            vector<string> files = getFilesForUser(username);
+            
+            // Prepare response
+            string response;
+            if (files.empty()) {
+                response = "Username not found!";
+            } else {
+                response = "Files for " + username + ":\n";
+                for (const string &file : files) {
+                    response += file + "\n";
+                }
+            }
+
+            // Send the response back to ServerM
+            ssize_t sent = sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+            if (sent < 0) {
+                perror("Failed to send response");
+            } else {
+                cout << "Server R sent response: " << response << endl;
+            }
         }
     }
 
-    close(sockfd);
+    close(udpSock);
     return 0;
 }

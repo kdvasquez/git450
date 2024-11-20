@@ -5,6 +5,7 @@
 
 #define PORT_M_TCP 25985
 #define BUFFER_SIZE 1024
+#define SERVER_M "127.0.0.1"
 using namespace std;
 
 // Encryption function
@@ -33,6 +34,7 @@ int main(int argc, char *argv[]) {
     string password = argv[2];
 
     cout << "The client is up and running." << endl;
+
     // Encrypt the password
     string encryptedPassword = encryptPassword(password);
 
@@ -66,7 +68,35 @@ int main(int argc, char *argv[]) {
     // Receive response
     memset(buffer, 0, BUFFER_SIZE);
     read(sock, buffer, BUFFER_SIZE);
-    cout << "Server Response: " << buffer << endl;
+
+    if (string(buffer) == "AUTH_SUCCESS") {
+        // Authentication success
+        cout << "You have been granted member access." << endl;
+
+        // Display the menu and ask for command
+        cout << "Please enter the command:" << endl;
+        cout << "<lookup <username>>" << endl;
+        cout << "<push <filename>>" << endl;
+        cout << "<remove <filename>>" << endl;
+        cout << "<deploy>" << endl;
+        cout << "<log>" << endl;
+
+        // Read user input for the command
+        string command;
+        cout << "Enter your command: ";
+        getline(cin, command);
+
+        // Send command to the server
+        write(sock, command.c_str(), command.size());
+
+        // Receive server response
+        memset(buffer, 0, BUFFER_SIZE);
+        read(sock, buffer, BUFFER_SIZE);
+        cout << "Server Response: " << buffer << endl;
+    } else {
+        // Authentication failed
+        cout << "Authentication failed. Please check your username or password." << endl;
+    }
 
     close(sock);
     return 0;

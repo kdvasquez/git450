@@ -3,7 +3,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#define PORT_M_UDP 24985
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
 #define BUFFER_SIZE 1024
@@ -35,7 +34,7 @@ int main() {
     }
     listen(serverSock, 5);
 
-    cout << "Server M: Main Server is up and running using UDP on port " << PORT_M_UDP << endl;
+    std::cout << "Server M: Main Server is up and running using TCP on port " << PORT_M_TCP << std::endl;
 
     while (true) {
         // Accept client connection
@@ -55,7 +54,7 @@ int main() {
         string password = credentials.substr(spacePos + 1);
 
         // Print formatted message
-        cout << "Server M has received username <" << username << "> and password ******" << std::endl;
+        std::cout << "Server M has received username <" << username << "> and password ******" << std::endl;
 
         // Forward request to ServerA via UDP
         int udpSock;
@@ -72,17 +71,16 @@ int main() {
         serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
         sendto(udpSock, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
-        cout << "Server M has sent authentication request to Server A" << endl;
+
         // Receive response from ServerA
         memset(buffer, 0, BUFFER_SIZE);
         socklen_t serverALen = sizeof(serverAAddr);
         recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
 
-        cout << "Server M received response from Server A using UDP over 24985: " << buffer << std::endl;
+        std::cout << "Server M received response from Server A: " << buffer << std::endl;
 
         // Send response back to the client
         write(clientSock, buffer, strlen(buffer));
-        cout << "The main server has sent the response from server A to client using TCP over port 25985 " << endl;
 
         close(clientSock);
         close(udpSock);
@@ -91,4 +89,5 @@ int main() {
     close(serverSock);
     return 0;
 }
+
 
