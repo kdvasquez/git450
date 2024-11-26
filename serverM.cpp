@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
@@ -48,7 +49,7 @@ int main() {
             continue;
         }
 
-        // First, handle authentication
+        // Authentication handling (same as before)
         memset(buffer, 0, BUFFER_SIZE);
         ssize_t authBytes = read(clientSock, buffer, BUFFER_SIZE);
         if (authBytes <= 0) {
@@ -153,6 +154,94 @@ int main() {
 
             // Send response back to the client
             write(clientSock, buffer, strlen(buffer));
+
+            close(udpSockR);
+        }
+        // Handle push command
+        else if (command.substr(0, 4) == "push") {
+            istringstream iss(command);
+            string pushCmd, username, filename;
+            iss >> pushCmd >> username >> filename;
+
+            // Validate push command
+            if (filename.empty()) {
+                string errorMsg = "Error: Please provide a filename with the push command.";
+                write(clientSock, errorMsg.c_str(), errorMsg.length());
+                close(clientSock);
+                continue;
+            }
+
+            std::cout << "The main server has received a push request from <" 
+                      << username << "> to push <" << filename << "> using TCP over port " 
+                      << PORT_M_TCP << std::endl;
+
+            // Create UDP socket for communication with ServerR
+            int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+            if (udpSockR < 0) {
+                perror("UDP socket creation failed for Server R");
+                close(clientSock);
+                continue;
+            }
+
+            serverRAddr.sin_family = AF_INET;
+            serverRAddr.sin_port = htons(PORT_R_UDP);
+            serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+            // Send push request to ServerR
+            string pushRequest = "push " + username + " " + filename;
+            sendto(udpSockR, pushRequest.c_str(), pushRequest.length(), 0, 
+                   (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+
+            std::cout << "The main server has sent the push request to serverR." << std::endl;
+
+            // Receive response from ServerR
+            memset(buffer, 0, BUFFER_SIZE);
+            socklen_t serverRLen = sizeof(serverRAddr);
+            recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, 
+                     (struct sockaddr *)&serverRAddr, &serverRLen);
+
+            std::cout << "Response received from R: " << buffer << std::endl;
+
+            // If file exists, prompt user for overwrite
+            if (string(buffer) == "FILE_EXISTS") {
+                string overwritePrompt = "This file already exists. Do you want to overwrite? (Y/N)";
+                write(clientSock, overwritePrompt.c_str(), overwritePrompt.length());
+
+                // Wait for client's overwrite decision
+                memset(buffer, 0, BUFFER_SIZE);
+                read(clientSock, buffer, BUFFER_SIZE);
+                string overwriteDecision(buffer);
+
+                // Normalize the decision for case-insensitivity
+                transform(overwriteDecision.begin(), overwriteDecision.end(), 
+                          overwriteDecision.begin(), ::toupper);
+
+                // Send overwrite decision to ServerR
+                string overwriteRequest = (overwriteDecision == "Y") ? 
+                    "OVERWRITE_YES " + username + " " + filename : 
+                    "OVERWRITE_NO " + username + " " + filename;
+                
+                sendto(udpSockR, overwriteRequest.c_str(), overwriteRequest.length(), 0, 
+                       (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+
+                // Receive final response from ServerR
+                memset(buffer, 0, BUFFER_SIZE);
+                serverRLen = sizeof(serverRAddr);
+                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, 
+                         (struct sockaddr *)&serverRAddr, &serverRLen);
+
+                // Send the final response back to the client
+                write(clientSock, buffer, strlen(buffer));
+            }
+            // If file is successfully added
+            else if (string(buffer) == "FILE_ADDED") {
+                string successMsg = "Successfully added the file to your repository.";
+                write(clientSock, successMsg.c_str(), successMsg.length());
+            }
+            // Send the response from ServerR to the client
+            else {
+                write(clientSock, buffer, strlen(buffer));
+            }
 
             close(udpSockR);
         }

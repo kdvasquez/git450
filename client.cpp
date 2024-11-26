@@ -4,23 +4,19 @@
 #include <unistd.h>
 #include <sstream>
 
-#define PORT_M_TCP 25985
-#define PORT_A_UDP 21985  // serverA's UDP port
-#define PORT_R_UDP 22985  // serverR's UDP port
+#define PORT_M_TCP 25985 // Main server TCP port
 #define BUFFER_SIZE 1024
 #define SERVER_M "127.0.0.1" // Main server IP (localhost)
-#define SERVER_A "127.0.0.1" // serverA IP (localhost)
-#define SERVER_R "127.0.0.1" // serverR IP (localhost)
 
 using namespace std;
 
-// Encryption function
+// Function to encrypt the password
 string encryptPassword(const string &password) {
     string encrypted;
     for (char c : password) {
         if (isalpha(c)) {
             char base = islower(c) ? 'a' : 'A';
-            encrypted += (c - base + 3) % 26 + base;
+            encrypted += (c - base + 3) % 26 + base; // Caesar cipher (shift by 3)
         } else if (isdigit(c)) {
             encrypted += (c - '0' + 3) % 10 + '0';
         } else {
@@ -48,17 +44,17 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serverAddrM;
     char buffer[BUFFER_SIZE];
 
-    // Create TCP socket for connecting to serverM
+    // Create TCP socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         perror("Socket creation failed");
         return -1;
     }
 
-    // Configure serverM address (Main Server)
+    // Configure serverM address
     serverAddrM.sin_family = AF_INET;
     serverAddrM.sin_port = htons(PORT_M_TCP);
-    serverAddrM.sin_addr.s_addr = inet_addr(SERVER_M);  // localhost
+    serverAddrM.sin_addr.s_addr = inet_addr(SERVER_M);
 
     // Connect to the Main Server (serverM)
     if (connect(sock, (struct sockaddr *)&serverAddrM, sizeof(serverAddrM)) < 0) {
@@ -67,44 +63,48 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    // Send encrypted authentication request
+    // Send authentication request
     string authRequest = string(username) + " " + encryptedPassword;
     write(sock, authRequest.c_str(), authRequest.size());
 
-    // Receive response from serverM
+    // Receive authentication response
     memset(buffer, 0, BUFFER_SIZE);
     read(sock, buffer, BUFFER_SIZE);
 
     if (string(buffer) == "AUTH_SUCCESS") {
-        // Authentication success
-        cout << "You have been granted member access." << endl;
+        cout << "Authentication successful. You have been granted access." << endl;
 
-        // Display the menu and ask for command
-        cout << "Please enter the command:" << endl;
-        cout << "<lookup <username>>" << endl;
-        cout << "<push <filename>>" << endl;
-        cout << "<remove <filename>>" << endl;
-        cout << "<deploy>" << endl;
-        cout << "<log>" << endl;
+        // Menu and command input loop
+        while (true) {
+            cout << "\nAvailable commands:\n"
+                 << "1. lookup <username>\n"
+                 << "2. push <filename>\n"
+                 << "3. remove <filename>\n"
+                 << "4. deploy\n"
+                 << "5. log\n"
+                 << "Enter your command (or 'exit' to quit): ";
+            
+            string command;
+            getline(cin, command);
 
-        // Read user input for the command
-        string command;
-        cout << "Enter your command: ";
-        getline(cin, command);  // Use getline to handle full line input
+            if (command == "exit") {
+                cout << "Exiting the client. Goodbye!" << endl;
+                break;
+            }
 
-        // Debug print to verify command
-        cout << "Sending command: [" << command << "] to serverM" << endl;
+            // Send the command to serverM
+            write(sock, command.c_str(), command.size());
+            cout << "This is the current command being sent " << command << endl;
 
-        // Send command to serverM
-        write(sock, command.c_str(), command.size());
+            // Receive the server's response
+            memset(buffer, 0, BUFFER_SIZE);
+            read(sock, buffer, BUFFER_SIZE);
 
-        // Receive server response
-        memset(buffer, 0, BUFFER_SIZE);
-        read(sock, buffer, BUFFER_SIZE);
-        cout << "Server Response: " << buffer << endl;
+            // Display server response
+            cout << "Server Response: " << buffer << endl;
+        }
     } else {
-        // Authentication failed
-        cout << "Authentication failed. Please check your username or password." << endl;
+        cout << "Authentication failed. Please check your credentials." << endl;
     }
 
     close(sock);

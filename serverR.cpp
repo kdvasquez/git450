@@ -5,10 +5,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <vector>
+#include <algorithm>
 
 #define PORT_R_UDP 22985  // ServerR listens on port 22985
 #define BUFFER_SIZE 1024
 #define FILENAME_FILE "filenames.txt" // The filename to check for usernames
+
 using namespace std;
 
 // Function to search for files by username in filenames.txt
@@ -28,6 +30,12 @@ vector<string> getFilesForUser(const string &username) {
     return files;
 }
 
+// Function to check if a file exists for a username
+bool fileExists(const string &username, const string &filename) {
+    vector<string> userFiles = getFilesForUser(username);
+    return find(userFiles.begin(), userFiles.end(), filename) != userFiles.end();
+}
+
 int main() {
     int udpSock;
     struct sockaddr_in serverAddr, clientAddr;
@@ -40,6 +48,10 @@ int main() {
         perror("UDP socket creation failed");
         return -1;
     }
+
+    // Add socket reuse option to prevent "Address already in use" error
+    int optval = 1;
+    setsockopt(udpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
     // Configure server address
     serverAddr.sin_family = AF_INET;
@@ -57,7 +69,6 @@ int main() {
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);
-
         // Receive the request from ServerM
         ssize_t len = recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&clientAddr, &clientLen);
         if (len < 0) {
@@ -94,6 +105,44 @@ int main() {
                 perror("Failed to send response");
             } else {
                 cout << "Server R sent response: " << response << endl;
+            }
+        }
+        // Handle push command
+        else if (request.substr(0, 4) == "push") {
+            // Parse push command
+            istringstream iss(request);
+            string pushCmd, username, filename;
+            iss >> pushCmd >> username >> filename;
+
+            // Check if file already exists for this user
+            bool exists = fileExists(username, filename);
+
+            if (exists) {
+                // Send FILE_EXISTS back to ServerM
+                string response = "FILE_EXISTS";
+                sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+
+                // Wait for overwrite decision from ServerM
+                memset(buffer, 0, BUFFER_SIZE);
+                recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&clientAddr, &clientLen);
+                string overwriteDecision(buffer);
+
+                if (overwriteDecision == "OVERWRITE_YES") {
+                    // If overwrite is allowed
+                    string response = "File push successful.";
+                    sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+                } else {
+                    string response = "File push canceled.";
+                    sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+                }
+            } else {
+                // Add file to user's repository (add entry to filenames.txt)
+                ofstream file(FILENAME_FILE, ios::app);
+                file << username << " " << filename << endl;
+                file.close();
+
+                string response = "FILE_ADDED";
+                sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
             }
         }
     }
