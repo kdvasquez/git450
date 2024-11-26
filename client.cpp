@@ -2,6 +2,7 @@
 #include <cstring>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <sstream>
 
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985  // serverA's UDP port
@@ -44,7 +45,7 @@ int main(int argc, char *argv[]) {
     string encryptedPassword = encryptPassword(password);
 
     int sock;
-    struct sockaddr_in serverAddrM, serverAddrA, serverAddrR;
+    struct sockaddr_in serverAddrM;
     char buffer[BUFFER_SIZE];
 
     // Create TCP socket for connecting to serverM
@@ -89,41 +90,18 @@ int main(int argc, char *argv[]) {
         // Read user input for the command
         string command;
         cout << "Enter your command: ";
-        getline(cin, command);
+        getline(cin, command);  // Use getline to handle full line input
 
-        // Check if the command is "lookup <username>"
-        if (command.substr(0, 6) == "lookup") {
-            // Set up UDP socket for serverR
-            int sockR = socket(AF_INET, SOCK_DGRAM, 0);
-            if (sockR < 0) {
-                perror("Socket creation failed for serverR");
-                return -1;
-            }
+        // Debug print to verify command
+        cout << "Sending command: [" << command << "] to serverM" << endl;
 
-            // Configure serverR address (serverR for "lookup" request)
-            serverAddrR.sin_family = AF_INET;
-            serverAddrR.sin_port = htons(PORT_R_UDP);
-            serverAddrR.sin_addr.s_addr = inet_addr(SERVER_R);  // localhost
+        // Send command to serverM
+        write(sock, command.c_str(), command.size());
 
-            // Send "lookup <username>" command to serverR
-            sendto(sockR, command.c_str(), command.size(), 0, (struct sockaddr *)&serverAddrR, sizeof(serverAddrR));
-
-            // Receive response from serverR
-            memset(buffer, 0, BUFFER_SIZE);
-            recvfrom(sockR, buffer, BUFFER_SIZE, 0, nullptr, nullptr);
-
-            cout << "Server R Response: " << buffer << endl;
-
-            close(sockR);
-        } else {
-            // Otherwise, send command to serverM
-            write(sock, command.c_str(), command.size());
-
-            // Receive server response
-            memset(buffer, 0, BUFFER_SIZE);
-            read(sock, buffer, BUFFER_SIZE);
-            cout << "Server Response: " << buffer << endl;
-        }
+        // Receive server response
+        memset(buffer, 0, BUFFER_SIZE);
+        read(sock, buffer, BUFFER_SIZE);
+        cout << "Server Response: " << buffer << endl;
     } else {
         // Authentication failed
         cout << "Authentication failed. Please check your username or password." << endl;
@@ -132,4 +110,3 @@ int main(int argc, char *argv[]) {
     close(sock);
     return 0;
 }
-
