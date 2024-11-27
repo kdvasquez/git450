@@ -36,6 +36,38 @@ bool fileExists(const string &username, const string &filename) {
     return find(userFiles.begin(), userFiles.end(), filename) != userFiles.end();
 }
 
+// New function to remove a file for a specific user
+bool removeFileForUser(const string &username, const string &filename) {
+    // Read the entire file
+    ifstream inputFile(FILENAME_FILE);
+    vector<string> lines;
+    string line;
+    bool fileRemoved = false;
+
+    while (getline(inputFile, line)) {
+        istringstream iss(line);
+        string user, existingFilename;
+        if (iss >> user >> existingFilename) {
+            // Keep all lines except the one matching username and filename
+            if (!(user == username && existingFilename == filename)) {
+                lines.push_back(line);
+            } else {
+                fileRemoved = true;
+            }
+        }
+    }
+    inputFile.close();
+
+    // Rewrite the file without the removed entry
+    ofstream outputFile(FILENAME_FILE);
+    for (const string &l : lines) {
+        outputFile << l << endl;
+    }
+    outputFile.close();
+
+    return fileRemoved;
+}
+
 int main() {
     int udpSock;
     struct sockaddr_in serverAddr, clientAddr;
@@ -49,7 +81,7 @@ int main() {
         return -1;
     }
 
-    // Add socket reuse option to prevent "Address already in use" error
+    // Add socket reuse option
     int optval = 1;
     setsockopt(udpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
@@ -79,8 +111,9 @@ int main() {
         string request(buffer);
         cout << "Server R received request: " << request << endl;
 
-        // Check if the request is a lookup and contains a username
+        // Existing lookup handling remains the same...
         if (request.find("lookup") != string::npos) {
+            // [Previous lookup code remains unchanged]
             stringstream ss(request);
             string command, username;
             ss >> command >> username;
@@ -107,8 +140,9 @@ int main() {
                 cout << "Server R sent response: " << response << endl;
             }
         }
-        // Handle push command
+        // Existing push handling remains the same...
         else if (request.substr(0, 4) == "push") {
+            // [Previous push code remains unchanged]
             // Parse push command
             istringstream iss(request);
             string pushCmd, username, filename;
@@ -142,6 +176,34 @@ int main() {
                 file.close();
 
                 string response = "FILE_ADDED";
+                sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+            }
+
+        }
+        // New remove handling
+        else if (request.substr(0, 6) == "remove") {
+            // Parse remove command
+            istringstream iss(request);
+            string removeCmd, username, filename;
+            iss >> removeCmd >> username >> filename;
+
+            // Check if file exists for this user
+            bool exists = fileExists(username, filename);
+
+            if (exists) {
+                // Attempt to remove the file
+                bool removed = removeFileForUser(username, filename);
+                
+                if (removed) {
+                    string response = "FILE_REMOVED";
+                    sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+                } else {
+                    string response = "REMOVE_FAILED";
+                    sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+                }
+            } else {
+                // File not found for this user
+                string response = "FILE_NOT_FOUND";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
             }
         }

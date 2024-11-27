@@ -173,8 +173,50 @@ int main() {
                 write(clientSock, buffer, strlen(buffer));
                 close(udpSockR);
             }
+            else if (command.substr(0, 6) == "remove") {
+                cout << "DEBUG: Full remove command received: [" << command << "]" << endl;
+                cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
+                
+                // Check if filename is specified
+                if (command.length() <= 7) {  // "remove " is 7 characters
+                    string errorMsg = "Filename is not specified.\nPlease enter the command: <lookup <username>>, <push <filename>>, <remove <filename>>, <deploy>, <log>.";
+                    write(clientSock, errorMsg.c_str(), errorMsg.length());
+                    continue;
+                }
+                
+                // Extract the filename from the remove command
+                string filename = command.substr(7);
+                cout << "DEBUG: Extracted filename: [" << filename << "]" << endl;
+                
+                int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udpSockR < 0) {
+                    perror("UDP socket creation failed for Server R");
+                    continue;
+                }
+
+                serverRAddr.sin_family = AF_INET;
+                serverRAddr.sin_port = htons(PORT_R_UDP);
+                serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+                // Modify the command to include the username
+                string fullRemoveCommand = "remove " + currentAuthenticatedUsername + " " + filename;
+                cout << "DEBUG: Full remove command sent to ServerR: [" << fullRemoveCommand << "]" << endl;
+
+                sendto(udpSockR, fullRemoveCommand.c_str(), fullRemoveCommand.length(), 0, 
+                       (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+
+                memset(buffer, 0, BUFFER_SIZE);
+                socklen_t serverRLen = sizeof(serverRAddr);
+                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
+
+                cout << "Response from serverR: " << buffer << endl;
+                write(clientSock, buffer, strlen(buffer));
+                close(udpSockR);
+            }
             else {
                 cout << "DEBUG: Unrecognized command: [" << command << "]" << endl;
+                string errorMsg = "Invalid command.\nPlease enter the command: <lookup <username>>, <push <filename>>, <remove <filename>>, <deploy>, <log>.";
+                write(clientSock, errorMsg.c_str(), errorMsg.length());
             }
         }
 
