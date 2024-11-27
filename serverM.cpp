@@ -8,48 +8,49 @@
 
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
-#define PORT_R_UDP 22985  // Server R's UDP port
+#define PORT_R_UDP 22985
 #define BUFFER_SIZE 1024
+
 using namespace std;
 
 int main() {
     int serverSock, clientSock;
-    struct sockaddr_in serverAddr, clientAddr;
-    struct sockaddr_in serverAAddr, serverRAddr;
+    struct sockaddr_in serverAddr, clientAddr, serverAAddr, serverRAddr;
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
+    string currentAuthenticatedUsername;
 
-    // Create TCP socket for communication with the client
+    // Create TCP socket for serverM
     serverSock = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSock < 0) {
         perror("Socket creation failed");
         return -1;
     }
 
-    // Configure server address
+    // Allow socket reuse to prevent "Address already in use" error
+    int optval = 1;
+    setsockopt(serverSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(PORT_M_TCP);
     serverAddr.sin_addr.s_addr = INADDR_ANY;
 
-    // Bind and listen
     if (bind(serverSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("Bind failed");
         close(serverSock);
         return -1;
     }
-    listen(serverSock, 5);
 
-    std::cout << "Server M: Main Server is up and running using TCP on port " << PORT_M_TCP << std::endl;
+    listen(serverSock, 5);
+    cout << "Server M is up and running on TCP port " << PORT_M_TCP << endl;
 
     while (true) {
-        // Accept client connection
         clientSock = accept(serverSock, (struct sockaddr *)&clientAddr, &clientLen);
         if (clientSock < 0) {
             perror("Connection failed");
             continue;
         }
 
-        // Authentication handling (same as before)
         memset(buffer, 0, BUFFER_SIZE);
         ssize_t authBytes = read(clientSock, buffer, BUFFER_SIZE);
         if (authBytes <= 0) {
@@ -60,15 +61,16 @@ int main() {
         string authRequest(buffer);
         size_t spacePos = authRequest.find(" ");
 
-        // Authentication request
         if (spacePos != string::npos) {
             string username = authRequest.substr(0, spacePos);
             string password = authRequest.substr(spacePos + 1);
 
-            std::cout << "The main server has received a login request from <" 
-                      << username << "> using TCP over port " << PORT_M_TCP << std::endl;
+            // Store the authenticated username
+            currentAuthenticatedUsername = username;
 
-            // Create UDP socket for authentication
+            cout << "Received login request from <" << username << "> on port " << PORT_M_TCP << endl;
+
+            // Create UDP socket for serverA
             int udpSockA = socket(AF_INET, SOCK_DGRAM, 0);
             if (udpSockA < 0) {
                 perror("UDP socket creation failed for Server A");
@@ -80,172 +82,103 @@ int main() {
             serverAAddr.sin_port = htons(PORT_A_UDP);
             serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-            // Forward authentication request to ServerA
-            sendto(udpSockA, buffer, strlen(buffer), 0, 
-                   (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
+            sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
 
-            // Receive response from ServerA
             memset(buffer, 0, BUFFER_SIZE);
             socklen_t serverALen = sizeof(serverAAddr);
-            recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, 
-                     (struct sockaddr *)&serverAAddr, &serverALen);
+            recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
 
-            std::cout << "Server M received response from Server A: " << buffer << std::endl;
-
-            // Send authentication result back to client
+            cout << "ServerM received authentication response: " << buffer << endl;
             write(clientSock, buffer, strlen(buffer));
-
             close(udpSockA);
 
-            // If authentication failed, close connection
             if (string(buffer) != "AUTH_SUCCESS") {
                 close(clientSock);
                 continue;
             }
         }
 
-        // Now handle subsequent commands
-        memset(buffer, 0, BUFFER_SIZE);
-        ssize_t cmdBytes = read(clientSock, buffer, BUFFER_SIZE);
-        if (cmdBytes <= 0) {
-            close(clientSock);
-            continue;
-        }
-
-        string command(buffer);
-        std::cout << "ServerM received command: [" << command << "]" << std::endl;
-
-        // Check if the command is "lookup"
-        if (command.substr(0, 6) == "lookup") {
-            // Forward request to ServerR via UDP
-            int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
-            if (udpSockR < 0) {
-                perror("UDP socket creation failed for Server R");
-                close(clientSock);
-                continue;
-            }
-
-            serverRAddr.sin_family = AF_INET;
-            serverRAddr.sin_port = htons(PORT_R_UDP);
-            serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-            // Extract username for lookup
-            istringstream iss(command);
-            string lookupCmd, username;
-            iss >> lookupCmd >> username;
-
-            std::cout << "The main server has received a lookup request from <" 
-                      << username << "> to lookup <" << username << "'s repository> using TCP over port " 
-                      << PORT_M_TCP << std::endl;
-
-            // Send lookup request to ServerR
-            sendto(udpSockR, command.c_str(), command.length(), 0, 
-                   (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
-
-            std::cout << "The main server has sent the lookup request to serverR." << std::endl;
-
-            // Receive response from ServerR
+        // Multiple command handling loop
+        while (true) {
             memset(buffer, 0, BUFFER_SIZE);
-            socklen_t serverRLen = sizeof(serverRAddr);
-            recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, 
-                     (struct sockaddr *)&serverRAddr, &serverRLen);
-
-            std::cout << "Response received from R: " << buffer << std::endl;
-
-            // Send response back to the client
-            write(clientSock, buffer, strlen(buffer));
-
-            close(udpSockR);
-        }
-        // Handle push command
-        else if (command.substr(0, 4) == "push") {
-            istringstream iss(command);
-            string pushCmd, username, filename;
-            iss >> pushCmd >> username >> filename;
-
-            // Validate push command
-            if (filename.empty()) {
-                string errorMsg = "Error: Please provide a filename with the push command.";
-                write(clientSock, errorMsg.c_str(), errorMsg.length());
-                close(clientSock);
-                continue;
+            ssize_t cmdBytes = recv(clientSock, buffer, BUFFER_SIZE - 1, 0);
+            if (cmdBytes <= 0) {
+                // Client disconnected or error occurred
+                cout << "Client disconnected or error occurred" << endl;
+                break;
             }
 
-            std::cout << "The main server has received a push request from <" 
-                      << username << "> to push <" << filename << "> using TCP over port " 
-                      << PORT_M_TCP << std::endl;
+            // Null-terminate the buffer to ensure it's a proper string
+            buffer[cmdBytes] = '\0';
 
-            // Create UDP socket for communication with ServerR
-            int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
-            if (udpSockR < 0) {
-                perror("UDP socket creation failed for Server R");
-                close(clientSock);
-                continue;
-            }
+            string command(buffer);
+            // Trim whitespace
+            command.erase(0, command.find_first_not_of(" \n\r\t"));
+            command.erase(command.find_last_not_of(" \n\r\t") + 1);
 
-            serverRAddr.sin_family = AF_INET;
-            serverRAddr.sin_port = htons(PORT_R_UDP);
-            serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+            cout << "DEBUG: Received command (length " << command.length() << "): [" << command << "]" << endl;
 
-            // Send push request to ServerR
-            string pushRequest = "push " + username + " " + filename;
-            sendto(udpSockR, pushRequest.c_str(), pushRequest.length(), 0, 
-                   (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+            if (command.substr(0, 6) == "lookup") {
+                int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udpSockR < 0) {
+                    perror("UDP socket creation failed for Server R");
+                    continue;
+                }
 
-            std::cout << "The main server has sent the push request to serverR." << std::endl;
+                serverRAddr.sin_family = AF_INET;
+                serverRAddr.sin_port = htons(PORT_R_UDP);
+                serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-            // Receive response from ServerR
-            memset(buffer, 0, BUFFER_SIZE);
-            socklen_t serverRLen = sizeof(serverRAddr);
-            recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, 
-                     (struct sockaddr *)&serverRAddr, &serverRLen);
+                sendto(udpSockR, command.c_str(), command.length(), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+                cout << "Forwarded lookup request to serverR" << endl;
 
-            std::cout << "Response received from R: " << buffer << std::endl;
-
-            // If file exists, prompt user for overwrite
-            if (string(buffer) == "FILE_EXISTS") {
-                string overwritePrompt = "This file already exists. Do you want to overwrite? (Y/N)";
-                write(clientSock, overwritePrompt.c_str(), overwritePrompt.length());
-
-                // Wait for client's overwrite decision
                 memset(buffer, 0, BUFFER_SIZE);
-                read(clientSock, buffer, BUFFER_SIZE);
-                string overwriteDecision(buffer);
+                socklen_t serverRLen = sizeof(serverRAddr);
+                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
 
-                // Normalize the decision for case-insensitivity
-                transform(overwriteDecision.begin(), overwriteDecision.end(), 
-                          overwriteDecision.begin(), ::toupper);
-
-                // Send overwrite decision to ServerR
-                string overwriteRequest = (overwriteDecision == "Y") ? 
-                    "OVERWRITE_YES " + username + " " + filename : 
-                    "OVERWRITE_NO " + username + " " + filename;
+                cout << "Response from serverR: " << buffer << endl;
+                write(clientSock, buffer, strlen(buffer));
+                close(udpSockR);
+            } 
+            else if (command.substr(0, 4) == "push") {
+                cout << "DEBUG: Full push command received: [" << command << "]" << endl;
+                cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
                 
-                sendto(udpSockR, overwriteRequest.c_str(), overwriteRequest.length(), 0, 
+                // Extract the filename from the push command
+                string filename = command.substr(5);
+                cout << "DEBUG: Extracted filename: [" << filename << "]" << endl;
+                
+                int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udpSockR < 0) {
+                    perror("UDP socket creation failed for Server R");
+                    continue;
+                }
+
+                serverRAddr.sin_family = AF_INET;
+                serverRAddr.sin_port = htons(PORT_R_UDP);
+                serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+                // Modify the command to include the username
+                string fullPushCommand = "push " + currentAuthenticatedUsername + " " + filename;
+                cout << "DEBUG: Full push command sent to ServerR: [" << fullPushCommand << "]" << endl;
+
+                sendto(udpSockR, fullPushCommand.c_str(), fullPushCommand.length(), 0, 
                        (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
 
-                // Receive final response from ServerR
                 memset(buffer, 0, BUFFER_SIZE);
-                serverRLen = sizeof(serverRAddr);
-                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, 
-                         (struct sockaddr *)&serverRAddr, &serverRLen);
+                socklen_t serverRLen = sizeof(serverRAddr);
+                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
 
-                // Send the final response back to the client
+                cout << "Response from serverR: " << buffer << endl;
                 write(clientSock, buffer, strlen(buffer));
+                close(udpSockR);
             }
-            // If file is successfully added
-            else if (string(buffer) == "FILE_ADDED") {
-                string successMsg = "Successfully added the file to your repository.";
-                write(clientSock, successMsg.c_str(), successMsg.length());
-            }
-            // Send the response from ServerR to the client
             else {
-                write(clientSock, buffer, strlen(buffer));
+                cout << "DEBUG: Unrecognized command: [" << command << "]" << endl;
             }
-
-            close(udpSockR);
         }
 
+        // Close the client socket after processing all commands
         close(clientSock);
     }
 
