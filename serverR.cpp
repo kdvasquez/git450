@@ -97,7 +97,7 @@ int main() {
         return -1;
     }
 
-    cout << "Server R: Listening for requests on UDP port " << PORT_R_UDP << endl;
+    cout << "Server R is up and running using UDP on port " << PORT_R_UDP << endl;
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);
@@ -109,7 +109,7 @@ int main() {
         }
 
         string request(buffer);
-        cout << "Server R received request: " << request << endl;
+        cout << "Server R has received a" << request << " request from the main server. " << request << endl;
 
         // Existing lookup handling remains the same...
         if (request.find("lookup") != string::npos) {
@@ -137,11 +137,12 @@ int main() {
             if (sent < 0) {
                 perror("Failed to send response");
             } else {
-                cout << "Server R sent response: " << response << endl;
+                cout << "Server R has finished sending the response to the main server. " << response << endl;
             }
         }
         // Existing push handling remains the same...
         else if (request.substr(0, 4) == "push") {
+            cout << "Server R has received a push request from the main server " << endl;
             // [Previous push code remains unchanged]
             // Parse push command
             istringstream iss(request);
@@ -153,6 +154,7 @@ int main() {
 
             if (exists) {
                 // Send FILE_EXISTS back to ServerM
+                cout << filename << " exists in " << username << "'s repository; requesting overwrite information. " << endl;
                 string response = "FILE_EXISTS";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
 
@@ -163,9 +165,11 @@ int main() {
 
                 if (overwriteDecision == "OVERWRITE_YES") {
                     // If overwrite is allowed
+                    cout << "User requested overwrite; overwrite successful. " << endl;
                     string response = "File push successful.";
                     sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
                 } else {
+                    cout << "Overwrite denied" << endl;
                     string response = "File push canceled.";
                     sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
                 }
@@ -175,6 +179,7 @@ int main() {
                 file << username << " " << filename << endl;
                 file.close();
 
+                cout << filename << " uploaded sucessfully." << endl;
                 string response = "FILE_ADDED";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
             }
@@ -182,6 +187,7 @@ int main() {
         }
         // New remove handling
         else if (request.substr(0, 6) == "remove") {
+            cout << "Server R has received a remove request from the main server. " << endl;
             // Parse remove command
             istringstream iss(request);
             string removeCmd, username, filename;

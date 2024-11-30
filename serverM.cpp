@@ -6,6 +6,7 @@
 #include <string>
 #include <algorithm>
 
+#define PORT_M_UDP 24985
 #define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
 #define PORT_R_UDP 22985
@@ -14,38 +15,67 @@
 using namespace std;
 
 int main() {
-    int serverSock, clientSock;
-    struct sockaddr_in serverAddr, clientAddr, serverAAddr, serverRAddr;
+    int udpSockM, tcpSock, clientSock;
+    struct sockaddr_in serverUDPAddr, clientAddr, serverAAddr, serverRAddr;
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
     string currentAuthenticatedUsername;
 
-    // Create TCP socket for serverM
-    serverSock = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverSock < 0) {
-        perror("Socket creation failed");
+    // Create UDP socket for Server M
+    udpSockM = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udpSockM < 0) {
+        perror("UDP socket creation failed");
+        return -1;
+    }
+
+    // Create TCP socket for client communication
+    tcpSock = socket(AF_INET, SOCK_STREAM, 0);
+    if (tcpSock < 0) {
+        perror("TCP socket creation failed");
+        close(udpSockM);
         return -1;
     }
 
     // Allow socket reuse to prevent "Address already in use" error
     int optval = 1;
-    setsockopt(serverSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    setsockopt(udpSockM, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    setsockopt(tcpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(PORT_M_TCP);
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    // Set up UDP socket address
+    serverUDPAddr.sin_family = AF_INET;
+    serverUDPAddr.sin_port = htons(PORT_M_UDP);
+    serverUDPAddr.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(serverSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Bind failed");
-        close(serverSock);
+    // Bind UDP socket
+    if (bind(udpSockM, (struct sockaddr *)&serverUDPAddr, sizeof(serverUDPAddr)) < 0) {
+        perror("UDP Bind failed");
+        close(udpSockM);
+        close(tcpSock);
         return -1;
     }
 
-    listen(serverSock, 5);
-    cout << "Server M is up and running on TCP port " << PORT_M_TCP << endl;
+    // Set up TCP socket address for client communication
+    struct sockaddr_in serverTCPAddr;
+    serverTCPAddr.sin_family = AF_INET;
+    serverTCPAddr.sin_port = htons(PORT_M_TCP);
+    serverTCPAddr.sin_addr.s_addr = INADDR_ANY;
+
+    // Bind TCP socket
+    if (bind(tcpSock, (struct sockaddr *)&serverTCPAddr, sizeof(serverTCPAddr)) < 0) {
+        perror("TCP Bind failed");
+        close(udpSockM);
+        close(tcpSock);
+        return -1;
+    }
+
+    // Listen on TCP socket
+    listen(tcpSock, 5);
+    
+    cout << "Server M is up and running using UDP on port " << PORT_M_UDP << endl;
 
     while (true) {
-        clientSock = accept(serverSock, (struct sockaddr *)&clientAddr, &clientLen);
+        // Accept TCP connection
+        clientSock = accept(tcpSock, (struct sockaddr *)&clientAddr, &clientLen);
         if (clientSock < 0) {
             perror("Connection failed");
             continue;
@@ -68,7 +98,7 @@ int main() {
             // Store the authenticated username
             currentAuthenticatedUsername = username;
 
-            cout << "Received login request from <" << username << "> on port " << PORT_M_TCP << endl;
+            cout << "Server M has received username " << username << " and password ****." << endl;
 
             // Create UDP socket for serverA
             int udpSockA = socket(AF_INET, SOCK_DGRAM, 0);
@@ -82,14 +112,16 @@ int main() {
             serverAAddr.sin_port = htons(PORT_A_UDP);
             serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
+            cout << "Server M has sent authentication request to Server A " << endl;
             sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
 
             memset(buffer, 0, BUFFER_SIZE);
             socklen_t serverALen = sizeof(serverAAddr);
             recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
 
-            cout << "ServerM received authentication response: " << buffer << endl;
+            cout << "The main server has received the response from Server A using UDP over " << PORT_M_UDP << ":" << buffer << endl;
             write(clientSock, buffer, strlen(buffer));
+            cout << "The main server has sent the response from Server A to client using TCP over port " << PORT_M_TCP << "." << endl;
             close(udpSockA);
 
             if (string(buffer) != "AUTH_SUCCESS") {
@@ -119,6 +151,7 @@ int main() {
             cout << "DEBUG: Received command (length " << command.length() << "): [" << command << "]" << endl;
 
             if (command.substr(0, 6) == "lookup") {
+                cout << "The main server has received a lookup request from " << command << "'s repository using TCP over port 25985. " << endl;
                 int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
                 if (udpSockR < 0) {
                     perror("UDP socket creation failed for Server R");
@@ -130,17 +163,19 @@ int main() {
                 serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
                 sendto(udpSockR, command.c_str(), command.length(), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
-                cout << "Forwarded lookup request to serverR" << endl;
+                cout << "The main server has sent the lookup request to server R" << endl;
 
                 memset(buffer, 0, BUFFER_SIZE);
                 socklen_t serverRLen = sizeof(serverRAddr);
                 recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
 
-                cout << "Response from serverR: " << buffer << endl;
+                cout << "The main server has received the response from server R using UDP over 24985 " << buffer << endl;
                 write(clientSock, buffer, strlen(buffer));
+                cout << "The main server has sent the response to client. " << endl;
                 close(udpSockR);
             } 
             else if (command.substr(0, 4) == "push") {
+                cout << "The main server has received a push request from" << command << " using TCP over port 25985." << endl;
                 cout << "DEBUG: Full push command received: [" << command << "]" << endl;
                 cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
                 
@@ -169,11 +204,13 @@ int main() {
                 socklen_t serverRLen = sizeof(serverRAddr);
                 recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
 
-                cout << "Response from serverR: " << buffer << endl;
+                cout << "The main server has received the response from server R using UDP over prt 24985 " << buffer << endl;
                 write(clientSock, buffer, strlen(buffer));
+                cout << "The main server has sent the response to the client. " << endl;
                 close(udpSockR);
             }
             else if (command.substr(0, 6) == "remove") {
+                cout << "The main server has received a remove request from member " << command << "TCP over port 25985." << endl;
                 cout << "DEBUG: Full remove command received: [" << command << "]" << endl;
                 cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
                 
@@ -210,6 +247,7 @@ int main() {
                 recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
 
                 cout << "Response from serverR: " << buffer << endl;
+                cout << "The main server has received confirmation of the remove request done by the server R. " << endl;
                 write(clientSock, buffer, strlen(buffer));
                 close(udpSockR);
             }
@@ -224,6 +262,7 @@ int main() {
         close(clientSock);
     }
 
-    close(serverSock);
+    close(udpSockM);
+    close(tcpSock);
     return 0;
 }

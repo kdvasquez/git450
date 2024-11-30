@@ -72,7 +72,7 @@ int main() {
         return -1;
     }
 
-    std::cout << "ServerA: Authentication Server is up and running using UDP on port " << PORT_A_UDP << std::endl;
+    std::cout << "ServerA is up and running using UDP on port " << PORT_A_UDP << std::endl;
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);
@@ -84,9 +84,6 @@ int main() {
             cerr << "Failed to receive data!" << endl;
             continue;
         }
-
-        //buffer[bytesReceived] = '\0'; // Null-terminate the received string
-        //cout << "ServerA received: " << buffer << endl;
 
         // Parse username and encrypted password
         string credentials(buffer);
@@ -103,12 +100,6 @@ int main() {
         // Authenticate user
         bool isAuthenticated = authenticate(username, encryptedPassword);
 
-        // Prepare response
-        //const char *response = isAuthenticated ? "AUTH_SUCCESS" : "AUTH_FAILURE";
-        //std::cout << (isAuthenticated
-          //                ? "Member " + username "has been authenticated"
-            //              : "The username " + username + " or password ****** is incorrect")
-              //    << std::endl;
         // Prepare response
         const char *response = isAuthenticated ? "AUTH_SUCCESS" : "AUTH_FAILURE";
 

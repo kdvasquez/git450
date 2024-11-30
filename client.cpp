@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     read(sock, buffer, BUFFER_SIZE);
     
     if (string(buffer) == "AUTH_SUCCESS") {
-        cout << "Authentication successful. You have been granted access." << endl;
+        cout << "You have been granted access." << endl;
         
         // Menu and command input loop
         while (true) {
@@ -94,9 +94,16 @@ int main(int argc, char *argv[]) {
                 cout << "Exiting the client. Goodbye!" << endl;
                 break;
             }
-            
+            else if (command.substr(0, 6) == "lookup"){
+                cout << username << " sent a lookup request to the main server using TCP over port 25985. " << endl;
+            } 
+            else if (command.substr(0, 6) == "remove"){
+                cout << username << " sent a remove request to the main server using TCP over port 25985. " << endl;
+
+            }
             // Send the command directly, with explicit length
             cout << "DEBUG: Sending command (length " << command.length() << "): [" << command << "]" << endl;
+        
             ssize_t bytesSent = write(sock, command.c_str(), command.length());
             cout << "DEBUG: Bytes sent: " << bytesSent << endl;
             
@@ -108,7 +115,7 @@ int main(int argc, char *argv[]) {
             cout << "Server Response: " << buffer << endl;
         }
     } else {
-        cout << "Authentication failed. Please check your credentials." << endl;
+        cout << "The credentials are incorrect. Please try again. " << endl;
     }
     
     close(sock);
