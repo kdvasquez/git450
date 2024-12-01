@@ -7,13 +7,13 @@
 #include <vector>
 #include <algorithm>
 
-#define PORT_R_UDP 22985  // ServerR listens on port 22985
+#define PORT_R_UDP 22985  
 #define BUFFER_SIZE 1024
-#define FILENAME_FILE "filenames.txt" // The filename to check for usernames
+#define FILENAME_FILE "filenames.txt" 
 
 using namespace std;
 
-// Function to search for files by username in filenames.txt
+// Function to search for user's files in filenames.txt
 vector<string> getFilesForUser(const string &username) {
     vector<string> files;
     ifstream file(FILENAME_FILE);
@@ -36,7 +36,7 @@ bool fileExists(const string &username, const string &filename) {
     return find(userFiles.begin(), userFiles.end(), filename) != userFiles.end();
 }
 
-// New function to remove a file for a specific user
+// Function to remove a file for a specific user
 bool removeFileForUser(const string &username, const string &filename) {
     // Read the entire file
     ifstream inputFile(FILENAME_FILE);
@@ -74,7 +74,7 @@ int main() {
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
 
-    // Create UDP socket
+    // Create serverR's UDP socket
     udpSock = socket(AF_INET, SOCK_DGRAM, 0);
     if (udpSock < 0) {
         perror("UDP socket creation failed");
@@ -82,8 +82,8 @@ int main() {
     }
 
     // Add socket reuse option
-    int optval = 1;
-    setsockopt(udpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    //int optval = 1;
+    //setsockopt(udpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
     // Configure server address
     serverAddr.sin_family = AF_INET;
@@ -109,10 +109,10 @@ int main() {
         }
 
         string request(buffer);
-        cout << "Server R has received a" << request << " request from the main server. " << request << endl;
 
         // Existing lookup handling remains the same...
         if (request.find("lookup") != string::npos) {
+            cout << "Server R has received a lookup request from main server. " << endl;
             // [Previous lookup code remains unchanged]
             stringstream ss(request);
             string command, username;
@@ -137,13 +137,11 @@ int main() {
             if (sent < 0) {
                 perror("Failed to send response");
             } else {
-                cout << "Server R has finished sending the response to the main server. " << response << endl;
+                cout << "Server R has finished sending the response to the main server. " << endl; // << response << endl;
             }
         }
-        // Existing push handling remains the same...
         else if (request.substr(0, 4) == "push") {
             cout << "Server R has received a push request from the main server " << endl;
-            // [Previous push code remains unchanged]
             // Parse push command
             istringstream iss(request);
             string pushCmd, username, filename;
@@ -185,7 +183,6 @@ int main() {
             }
 
         }
-        // New remove handling
         else if (request.substr(0, 6) == "remove") {
             cout << "Server R has received a remove request from the main server. " << endl;
             // Parse remove command
@@ -197,7 +194,7 @@ int main() {
             bool exists = fileExists(username, filename);
 
             if (exists) {
-                // Attempt to remove the file
+                //Remove file
                 bool removed = removeFileForUser(username, filename);
                 
                 if (removed) {
@@ -211,6 +208,37 @@ int main() {
                 // File not found for this user
                 string response = "FILE_NOT_FOUND";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+            }
+        }
+        else if (request.substr(0, 6) == "deploy") {
+            cout << "Server R has received a deploy request from the main server " << endl;
+            // Extract the username from the deploy request
+            istringstream iss(request);
+            string deployCmd, username;
+            iss >> deployCmd >> username;
+
+            // Get the files associated with the username
+            vector<string> files = getFilesForUser(username);
+    
+            // Prepare response
+            string response;
+            if (files.empty()) {
+                response = username + " does not exist. Please try again.";
+            } else {
+                //response = "Files for " + username + ":\n";
+                for (const string &file : files) {
+                    response += file + "\n";
+                }
+            }
+
+            // Send the response back to serverM
+            ssize_t sent = sendto(udpSock, response.c_str(), response.size(), 0, 
+                          (struct sockaddr *)&clientAddr, clientLen);
+            if (sent < 0) {
+                perror("Failed to send response");
+            } else {
+                // Log that the response has been sent
+                cout << "Server R has finished sending the response to the main server." << endl;
             }
         }
     }

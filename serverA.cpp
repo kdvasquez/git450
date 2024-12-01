@@ -3,14 +3,13 @@
 #include <cstring>
 #include <arpa/inet.h>
 #include <unistd.h>
-
+using namespace std;
 #define PORT_A_UDP 21985
 #define BUFFER_SIZE 1024
-using namespace std;
 
 // Encryption function (must match client encryption)
-std::string encryptPassword(const std::string &password) {
-    std::string encrypted;
+string encryptPassword(const std::string &password) {
+    string encrypted;
     for (char c : password) {
         if (std::isalpha(c)) {
             char base = std::islower(c) ? 'a' : 'A';
@@ -40,11 +39,11 @@ bool authenticate(const std::string &username, const std::string &encryptedPassw
         string storedEncryptedPassword = line.substr(spacePos + 1);
 
         if (storedUsername == username && storedEncryptedPassword == encryptedPassword) {
-            return true; // Credentials match
+            return true; // Credentials match!
         }
     }
 
-    return false; // No match found
+    return false; // Credentials don't match
 }
 
 int main() {
@@ -53,14 +52,14 @@ int main() {
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
 
-    // Create UDP socket
+    // Create A's UDP socket
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         perror("Socket creation failed");
         return -1;
     }
 
-    // Configure server address
+    // Configure serverA's address
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(PORT_A_UDP);
     serverAddr.sin_addr.s_addr = INADDR_ANY;
@@ -72,7 +71,7 @@ int main() {
         return -1;
     }
 
-    std::cout << "ServerA is up and running using UDP on port " << PORT_A_UDP << std::endl;
+    std::cout << "Server A is up and running using UDP on port " << PORT_A_UDP << std::endl;
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);
@@ -88,7 +87,7 @@ int main() {
         // Parse username and encrypted password
         string credentials(buffer);
         size_t spacePos = credentials.find(" ");
-        if (spacePos == std::string::npos) {
+        if (spacePos == string::npos) {
             cerr << "Invalid message format received by ServerA!" << endl;
             continue;
         }
@@ -100,7 +99,7 @@ int main() {
         // Authenticate user
         bool isAuthenticated = authenticate(username, encryptedPassword);
 
-        // Prepare response
+        // Prepare response to send back to serverM
         const char *response = isAuthenticated ? "AUTH_SUCCESS" : "AUTH_FAILURE";
 
         if (isAuthenticated) {

@@ -1,11 +1,15 @@
 #include <iostream>
+#include <fstream>
 #include <sys/socket.h>  // Socket functions
 #include <netinet/in.h>  // Address structures
 #include <unistd.h>      // Close function
 #include <cstring>       // String functions
+#include <sstream>       // String stream operations
+
 using namespace std;
 
-#define PORT 23985 // Set the UDP port number
+#define PORT_D_UDP 23985 // Set the UDP port number
+#define DEPLOYED_FILE "deployed.txt"
 
 int main() {
     int serverSocket;
@@ -19,12 +23,10 @@ int main() {
         cout << "Socket creation failed!" << endl;
         return -1;
     }
-    cout << "UDP socket created on port " << PORT << endl;
-
     // Step 2: Define the address structure for binding
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(PORT_D_UDP);
 
     // Step 3: Bind the socket to the specified port
     if (bind(serverSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
@@ -32,33 +34,58 @@ int main() {
         close(serverSocket);
         return -1;
     }
-    cout << "Server D is up and running using UDP on port " << PORT << endl;
+    cout << "Server D is up and running using UDP on port " << PORT_D_UDP << endl;
 
     // Step 4: Wait to receive data (no listen/accept in UDP)
     while (true) {
-        cout << "Waiting for data from a client..." << endl;
+        memset(buffer, 0, sizeof(buffer)); // Clear buffer before receiving
         
         // Receive data from a client
         int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0,
                                      (struct sockaddr*)&address, (socklen_t*)&addrlen);
         if (bytesReceived < 0) {
             cerr << "Failed to receive data!" << endl;
-            close(serverSocket);
-            return -1;
+            continue; // Continue listening instead of closing the socket
+        }
+        buffer[bytesReceived] = '\0';  // Null-terminate the received data
+        
+        // Parse the received message
+        cout << "Server D has received a deploy request from the main server." << endl;
+        string message(buffer);
+        size_t spacePos = message.find(" ");
+        if (spacePos == string::npos) {
+            const char* errorResponse = "Invalid deploy message";
+            sendto(serverSocket, errorResponse, strlen(errorResponse), 0,
+                   (struct sockaddr*)&address, addrlen);
+            continue;
         }
 
-        buffer[bytesReceived] = '\0';  // Null-terminate the received data
-        cout << "Received message: " << buffer << endl;
+        string username = message.substr(0, spacePos);
+        string filename = message.substr(spacePos + 1);
 
-        // Send a response back to the client
-        const char* response = "Message received!";
-        sendto(serverSocket, response, strlen(response), 0,
+        // Open the deployed.txt file in append mode
+        ofstream deployedFile(DEPLOYED_FILE, ios::app);
+        if (!deployedFile) {
+            const char* errorResponse = "Failed to open deployed file";
+            sendto(serverSocket, errorResponse, strlen(errorResponse), 0,
+                   (struct sockaddr*)&address, addrlen);
+            continue;
+        }
+
+        // Write the username and filename to deployed.txt
+        deployedFile << username << " " << filename << endl;
+        deployedFile.close();
+
+        // Send confirmation back to ServerM
+        const char* successResponse = "FILE_DEPLOYED";
+        sendto(serverSocket, successResponse, strlen(successResponse), 0,
                (struct sockaddr*)&address, addrlen);
-        cout << "Response sent to client." << endl;
+
+        // Print deployment details
+        cout << "Server D has deployed the user " << username << "'s repository." << endl; //Deployed file: " << filename << " for user: " << username << endl;
     }
 
-    // Step 5: Close the socket after the loop (though this will run infinitely)
+    // Step 5: Close the socket after the loop
     close(serverSocket);
-
     return 0;
 }

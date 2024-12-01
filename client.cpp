@@ -3,12 +3,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sstream>
-#define PORT_M_TCP 25985 // Main server TCP port
+
+
 #define BUFFER_SIZE 1024
 #define SERVER_M "127.0.0.1" // Main server IP (localhost)
 using namespace std;
 
-// Function to encrypt the password
+// Function to encrypt the password (found using Caesar Cipher algorithm)
 string encryptPassword(const string &password) {
     string encrypted;
     for (char c : password) {
@@ -25,6 +26,7 @@ string encryptPassword(const string &password) {
 }
 
 int main(int argc, char *argv[]) {
+    // Check if username and password are provided
     if (argc != 3) {
         cerr << "Usage: ./client <username> <password>" << endl;
         return -1;
@@ -32,9 +34,8 @@ int main(int argc, char *argv[]) {
     
     const char *username = argv[1];
     string password = argv[2];
-    
     cout << "The client is up and running." << endl;
-    
+
     // Encrypt the password
     string encryptedPassword = encryptPassword(password);
     
@@ -49,40 +50,27 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     
-    // Configure serverM address
+    // Configure serverM's address
     serverAddrM.sin_family = AF_INET;
-    serverAddrM.sin_port = htons(PORT_M_TCP);
+    serverAddrM.sin_port = htons(25985); // PortM's TCP
     serverAddrM.sin_addr.s_addr = inet_addr(SERVER_M);
     
-    // Connect to the Main Server (serverM)
+    // Connect to the serverM
     if (connect(sock, (struct sockaddr *)&serverAddrM, sizeof(serverAddrM)) < 0) {
         perror("Connection failed to Main Server");
         close(sock);
         return -1;
     }
-    
-    // Send authentication request
-    string authRequest = string(username) + " " + encryptedPassword;
-    write(sock, authRequest.c_str(), authRequest.size());
-    
-    // Receive authentication response
-    memset(buffer, 0, BUFFER_SIZE);
-    read(sock, buffer, BUFFER_SIZE);
-    
-    if (string(buffer) == "AUTH_SUCCESS") {
-        cout << "You have been granted access." << endl;
+
+    // GUEST user has limited access
+    if (string(username) == "guest" && password == "guest") {
+        cout << "You have been granted guest access. " << endl;
         
-        // Menu and command input loop
+        // Guest command input loop
         while (true) {
-            cout << "\nAvailable commands:\n"
-                 << "1. lookup <username>\n"
-                 << "2. push <filename>\n"
-                 << "3. remove <filename>\n"
-                 << "4. deploy\n"
-                 << "5. log\n"
-                 << "Enter your command (or 'exit' to quit): ";
+            cout << "\nPlease enter the command:\n"
+                 << "1. lookup <username>" << endl;
             
-            // Instead of getline, use direct input
             char commandBuffer[BUFFER_SIZE];
             cin.getline(commandBuffer, BUFFER_SIZE);
             string command(commandBuffer);
@@ -94,25 +82,111 @@ int main(int argc, char *argv[]) {
                 cout << "Exiting the client. Goodbye!" << endl;
                 break;
             }
-            else if (command.substr(0, 6) == "lookup"){
-                cout << username << " sent a lookup request to the main server using TCP over port 25985. " << endl;
-            } 
-            else if (command.substr(0, 6) == "remove"){
-                cout << username << " sent a remove request to the main server using TCP over port 25985. " << endl;
-
+            if (command.substr(0, 6) != "lookup") {
+                cout << "Guests can only use the lookup command" << endl;
+                continue;
             }
-            // Send the command directly, with explicit length
-            cout << "DEBUG: Sending command (length " << command.length() << "): [" << command << "]" << endl;
-        
-            ssize_t bytesSent = write(sock, command.c_str(), command.length());
-            cout << "DEBUG: Bytes sent: " << bytesSent << endl;
+            // Check if username is specified
+            size_t usernamePos = command.find(" ");
+            if (usernamePos == string::npos || usernamePos + 1 >= command.length()) {
+                cout << "Error: Username is required. Please specify a username to lookup." << endl;
+                cout << "---Start a new request---" << endl;
+                continue;
+            }
             
-            // Receive the server's response
+            string lookupUsername = command.substr(usernamePos + 1);
+            cout << "Guest sent a lookup request to the main server." << endl;
+            // Send the lookup command
+            write(sock, command.c_str(), command.length());
+            
+            // Receive the serverM's response
+            memset(buffer, 0, BUFFER_SIZE);
+            read(sock, buffer, BUFFER_SIZE);
+            string response(buffer); // this buffer returns the user's files
+            
+            cout << "The client received the response from the main server using TCP over port 25985." << endl;
+            if(strlen(buffer) == 0){
+                cout << "Empty repository." << endl;
+                cout << "---Start a new request---" << endl;
+            }
+            // Handle different response scenarios NOT WORKING RIGHT NOW???
+            if (response.find("does not exist") != string::npos) {
+                cout << lookupUsername << " does not exist. Please try again." << endl;
+            } else if (response == "Empty repository.") {
+                cout << "Empty repository." << endl;
+            } else {
+                cout << response << endl;
+            }
+            
+            cout << "---Start a new request---" << endl;
+        }
+        
+        close(sock);
+        return 0;
+    }
+    
+    // MEMBER sends authentication request
+    string authRequest = string(username) + " " + encryptedPassword;
+    write(sock, authRequest.c_str(), authRequest.size());
+    
+    // Receive authentication response
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock, buffer, BUFFER_SIZE);
+    
+    if (string(buffer) == "AUTH_SUCCESS") {
+        cout << "You have been granted member access." << endl;
+        
+        // Member command input loop 
+        while (true) {
+            cout << "\nPlease enter the command:\n"
+                 << "1. lookup <username>\n"
+                 << "2. push <filename>\n"
+                 << "3. remove <filename>\n"
+                 << "4. deploy\n"
+                 << "5. log\n"
+                 << "Enter your command (or 'exit' to quit): ";
+            
+            char commandBuffer[BUFFER_SIZE];
+            cin.getline(commandBuffer, BUFFER_SIZE);
+            string command(commandBuffer);
+            
+            // Trim any trailing whitespace
+            command.erase(command.find_last_not_of(" \n\r\t") + 1);
+            
+            if (command == "exit") {
+                cout << "Exiting the client. Goodbye!" << endl;
+                break;
+            }
+            
+            // Command on-screen messages
+            if (command.substr(0, 6) == "lookup") {
+                cout << username << " sent a lookup request to the main server." << endl;
+                if(command.substr(6).empty()){
+                    cout << "Username is not specified. Will lookup " << username << endl;
+                    //command = username + " " + "lookup";
+                }
+            }
+            else if (command.substr(0, 4) == "push") {
+                // push command logic???
+            }
+            else if (command.substr(0, 6) == "remove") {
+                cout << username << " sent a remove request to the main server." << endl; //using TCP over port 25985. " << endl;
+            }
+            else if (command.substr(0, 6) == "deploy") {
+                cout << username << " sent a lookup request to the main server. " << endl;
+            }
+            
+            // Send command
+            write(sock, command.c_str(), command.length());
+            
+            // Receive response
             memset(buffer, 0, BUFFER_SIZE);
             read(sock, buffer, BUFFER_SIZE);
             
-            // Display server response
-            cout << "Server Response: " << buffer << endl;
+            // Display response
+            cout << "The client received the response from the main server using TCP over port 25985: " << buffer << endl;
+            //cout << "The " << command << " request was successful. " << endl;
+            cout << "---Start a new request---" << endl;
         }
     } else {
         cout << "The credentials are incorrect. Please try again. " << endl;
