@@ -106,8 +106,9 @@ It’s buggy, it’ll deploy after a couple of push commands or at the very star
 
 
 (h) I reused code:
-For the UDP/TCP socket creation and binding from GeekForGeeks: 
+For the UDP/TCP socket creation and binding from GeekForGeeks and Beej's Guide: 
 https://www.geeksforgeeks.org/socket-programming-in-cpp/
+http://www.beej.us/guide/bgnet/ 
 
 For encryption algorithm: Stack Overflow
 
