@@ -8,19 +8,23 @@
 #include <vector>
 using namespace std;
 
-#define PORT_M_UDP 24985
-#define PORT_M_TCP 25985
 #define PORT_A_UDP 21985
 #define PORT_R_UDP 22985
+#define PORT_D_UDP 23985
+#define PORT_M_UDP 24985
+#define PORT_M_TCP 25985
+#define HOST_NAME "127.0.0.1"
 #define BUFFER_SIZE 1024
+
 
 int main() {
     int udpSockM, tcpSock, clientSock;
     struct sockaddr_in serverUDPAddr, clientAddr, serverAAddr, serverRAddr;
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
-    string currentAuthenticatedUsername;
+    string currAuthenticatedUsername;
 
+    // Socket/Binding Creation - Courtesy of GeeksforGeeks
     // Create serverM's UDP socket
     udpSockM = socket(AF_INET, SOCK_DGRAM, 0);
     if (udpSockM < 0) {
@@ -36,17 +40,12 @@ int main() {
         return -1;
     }
 
-    //This supposedly prevents "addres already in use error" but may not need it
-    //int optval = 1;
-    //setsockopt(udpSockM, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    //setsockopt(tcpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-
-    // Set up M's UDP socket address
+    // Set up serverM's UDP socket address
     serverUDPAddr.sin_family = AF_INET;
     serverUDPAddr.sin_port = htons(PORT_M_UDP);
     serverUDPAddr.sin_addr.s_addr = INADDR_ANY;
 
-    // Bind UDP socket
+    // Bind serverM's UDP socket
     if (bind(udpSockM, (struct sockaddr *)&serverUDPAddr, sizeof(serverUDPAddr)) < 0) {
         perror("UDP Bind failed");
         close(udpSockM);
@@ -54,13 +53,13 @@ int main() {
         return -1;
     }
 
-    // Set up TCP socket address for client communication
+    // Set up serverM's TCP socket address for client communication
     struct sockaddr_in serverTCPAddr;
     serverTCPAddr.sin_family = AF_INET;
     serverTCPAddr.sin_port = htons(PORT_M_TCP);
     serverTCPAddr.sin_addr.s_addr = INADDR_ANY;
 
-    // Bind TCP socket
+    // Bind serverM's TCP socket
     if (bind(tcpSock, (struct sockaddr *)&serverTCPAddr, sizeof(serverTCPAddr)) < 0) {
         perror("TCP Bind failed");
         close(udpSockM);
@@ -68,7 +67,7 @@ int main() {
         return -1;
     }
 
-    // Listen on TCP socket
+    // Listen on TCP socket, where 5 is the max length for pending connections
     listen(tcpSock, 5);
     
     cout << "Server M is up and running using UDP on port " << PORT_M_UDP << endl;
@@ -96,7 +95,7 @@ int main() {
             string password = authRequest.substr(spacePos + 1);
 
             // Store the authenticated username
-            currentAuthenticatedUsername = username;
+            currAuthenticatedUsername = username;
 
             cout << "Server M has received username " << username << " and password ****." << endl;
 
@@ -110,7 +109,7 @@ int main() {
 
             serverAAddr.sin_family = AF_INET;
             serverAAddr.sin_port = htons(PORT_A_UDP);
-            serverAAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+            serverAAddr.sin_addr.s_addr = inet_addr(HOST_NAME);
 
             cout << "Server M has sent authentication request to Server A " << endl;
             sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
@@ -130,7 +129,7 @@ int main() {
             }
         }
 
-        // Multiple command handling loop
+        // Command Loop
         while (true) {
             memset(buffer, 0, BUFFER_SIZE);
             ssize_t cmdBytes = recv(clientSock, buffer, BUFFER_SIZE - 1, 0);
@@ -151,10 +150,10 @@ int main() {
             //cout << "DEBUG: Received command (length " << command.length() << "): [" << command << "]" << endl;
 
             if (command.substr(0, 6) == "lookup") {
-                if(currentAuthenticatedUsername == "guest"){
+                if(currAuthenticatedUsername == "guest"){
                     cout << "The main server has received a lookup request from Guest to lookup a repository using TCP over port 25985" << endl;
                 }
-                cout << "The main server has received a lookup request from " << currentAuthenticatedUsername << "to lookup " << currentAuthenticatedUsername << "'s repository using TCP over port 25985. " << endl;
+                cout << "The main server has received a lookup request from " << currAuthenticatedUsername << "to lookup " << currAuthenticatedUsername << "'s repository using TCP over port 25985. " << endl;
                 int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
                 if (udpSockR < 0) {
                     perror("UDP socket creation failed for Server R");
@@ -164,6 +163,7 @@ int main() {
                 serverRAddr.sin_family = AF_INET;
                 serverRAddr.sin_port = htons(PORT_R_UDP);
                 serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+                
                 // Forward lookup request to serverR
                 sendto(udpSockR, command.c_str(), command.length(), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
                 cout << "The main server has sent the lookup request to server R" << endl;
@@ -178,13 +178,10 @@ int main() {
                 close(udpSockR);
             } 
             else if (command.substr(0, 4) == "push") {
-                cout << "The main server has received a push request from" << currentAuthenticatedUsername << " using TCP over port 25985." << endl;
-                //cout << "DEBUG: Full push command received: [" << command << "]" << endl;
-                //cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
-                
+                cout << "The main server has received a push request from " << currAuthenticatedUsername << " using TCP over port 25985." << endl;                
                 // Extract the filename from the push command
                 string filename = command.substr(5);
-                cout << "DEBUG: Extracted filename: [" << filename << "]" << endl;
+                //cout << "DEBUGGING: Extracted filename: [" << filename << "]" << endl;
                 
                 int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
                 if (udpSockR < 0) {
@@ -197,7 +194,8 @@ int main() {
                 serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
                 // Modify the command to include the username
-                string fullPushCommand = "push " + currentAuthenticatedUsername + " " + filename;
+                string fullPushCommand = "push " + currAuthenticatedUsername + " " + filename;
+                
                 cout << "The main server has sent the push request to ServerR" << endl; // [" << fullPushCommand << "]" << endl;
 
                 sendto(udpSockR, fullPushCommand.c_str(), fullPushCommand.length(), 0, 
@@ -213,10 +211,7 @@ int main() {
                 close(udpSockR);
             }
             else if (command.substr(0, 6) == "remove") {
-                cout << "The main server has received a remove request from member " << currentAuthenticatedUsername << " TCP over port 25985." << endl;
-                //cout << "DEBUG: Full remove command received: [" << command << "]" << endl;
-                //cout << "DEBUG: Current authenticated username: [" << currentAuthenticatedUsername << "]" << endl;
-                
+                cout << "The main server has received a remove request from member " << currAuthenticatedUsername << " TCP over port 25985." << endl;
                 // Check if filename is specified
                 if (command.length() <= 7) {  // "remove " is 7 characters
                     string errorMsg = "Filename is not specified.\nPlease enter the command: <lookup <username>>, <push <filename>>, <remove <filename>>, <deploy>, <log>.";
@@ -239,9 +234,9 @@ int main() {
                 serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
                 // Modify the command to include the username
-                string fullRemoveCommand = "remove " + currentAuthenticatedUsername + " " + filename;
-                //cout << "DEBUG: Full remove command sent to ServerR: [" << fullRemoveCommand << "]" << endl;
+                string fullRemoveCommand = "remove " + currAuthenticatedUsername + " " + filename;
 
+                // Forward to serverR
                 sendto(udpSockR, fullRemoveCommand.c_str(), fullRemoveCommand.length(), 0, 
                        (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
 
@@ -254,9 +249,8 @@ int main() {
                 write(clientSock, buffer, strlen(buffer));
                 close(udpSockR);
             }
-            //Added for deploy command
             else if (command.substr(0,6) == "deploy") {
-                cout << "The main server has received a deploy request from member " << currentAuthenticatedUsername << " TCP over port 25985 " << endl;
+                cout << "The main server has received a deploy request from member " << currAuthenticatedUsername << " TCP over port 25985 " << endl;
 
                 // Create UDP Socket for serverR
                 int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
@@ -279,11 +273,11 @@ int main() {
 
                 struct sockaddr_in serverDAddr;
                 serverDAddr.sin_family = AF_INET;
-                serverDAddr.sin_port = htons(23985);  // ServerD's port
+                serverDAddr.sin_port = htons(PORT_D_UDP);  
                 serverDAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
                 // First, send a lookup request to ServerR to get files for current user
-                string deployRequest = "deploy " + currentAuthenticatedUsername;
+                string deployRequest = "deploy " + currAuthenticatedUsername;
                 sendto(udpSockR, deployRequest.c_str(), deployRequest.length(), 0, 
                     (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
                 cout << "The main server has sent the lookup request to server R" << endl;
@@ -308,37 +302,69 @@ int main() {
                 vector<string> files;
                 istringstream iss(lookupResponse);
                 string line;
-                getline(iss, line);  // Skip the first line "Files for username:"
+                getline(iss, line);  // Skips the first line "Files for username:"
                 while (getline(iss, line)) {
                     if (!line.empty()) {
                         files.push_back(line);
                     }
                 }
 
-            // Send each file to ServerD for deployment
-            for (const string& filename : files) {
-                string deployMsg = currentAuthenticatedUsername + " " + filename;
-                sendto(udpSockD, deployMsg.c_str(), deployMsg.length(), 0, 
-                    (struct sockaddr *)&serverDAddr, sizeof(serverDAddr));
-                cout << "The main server has sent the deploy request to server D. " << endl;
-                // Receive confirmation from ServerD
-                memset(buffer, 0, BUFFER_SIZE);
-                socklen_t serverDLen = sizeof(serverDAddr);
-                recvfrom(udpSockD, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverDAddr, &serverDLen);
+                // Send each file to serverD for deployment
+                for (const string& filename : files) {
+                    string deployMsg = currAuthenticatedUsername + " " + filename;
+                    sendto(udpSockD, deployMsg.c_str(), deployMsg.length(), 0, 
+                        (struct sockaddr *)&serverDAddr, sizeof(serverDAddr));
+                    cout << "The main server has sent the deploy request to server D. " << endl;
+                    // Receive confirmation from ServerD
+                    memset(buffer, 0, BUFFER_SIZE);
+                    socklen_t serverDLen = sizeof(serverDAddr);
+                    recvfrom(udpSockD, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverDAddr, &serverDLen);
         
-                cout << "The user " << currentAuthenticatedUsername << "'s repository has been deployed at server D." << endl; // << filename << ": " << buffer << endl;
+                    cout << "The user " << currAuthenticatedUsername << "'s repository has been deployed at server D." << endl; // << filename << ": " << buffer << endl;
+                }
+
+                // Prepare and send final response to client
+                string successMsg = "Deployment completed."; //to_string(files); //"Deployment completed. " + to_string(files.size()) + " files deployed.";
+                write(clientSock, successMsg.c_str(), successMsg.length());
+
+                // Close sockets
+                close(udpSockR);
+                close(udpSockD);
             }
 
-            // Prepare and send final response to client
-            string successMsg = "Deployment completed. " + to_string(files.size()) + " files deployed.";
-            write(clientSock, successMsg.c_str(), successMsg.length());
+            else if (command.substr(0, 3) == "log") {
+                cout << "The main server has received a log request from member " << currAuthenticatedUsername << " TCP over port 25985." << endl;
 
-            // Close sockets
-            close(udpSockR);
-            close(udpSockD);
-        }
+                // Create UDP Socket for serverR to get log information
+                int udpSockR = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udpSockR < 0) {
+                    perror("UDP socket creation failed for Server R");
+                    continue;
+                }
+
+                serverRAddr.sin_family = AF_INET;
+                serverRAddr.sin_port = htons(PORT_R_UDP);
+                serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+                // Send log request to ServerR with the current authenticated username
+                string logRequest = "log " + currAuthenticatedUsername;
+                sendto(udpSockR, logRequest.c_str(), logRequest.length(), 0, 
+                    (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+                cout << "The main server has sent the log request to server R" << endl;
+
+                // Receive log response from ServerR
+                memset(buffer, 0, BUFFER_SIZE);
+                socklen_t serverRLen = sizeof(serverRAddr);
+                recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
+
+                cout << "The main server has received the log response from server R" << endl;
+                write(clientSock, buffer, strlen(buffer));
+                close(udpSockR);
+            }
+
             else {
-                cout << "DEBUG: Unrecognized command: [" << command << "]" << endl;
+                cout << "The main server has received the overwrite confirmation response from " << currAuthenticatedUsername << " using TCP port number " << PORT_M_TCP << endl;
+                //cout << "DEBUG: Unrecognized command: [" << command << "]" << endl;
                 string errorMsg = "Invalid command.\nPlease enter the command: <lookup <username>>, <push <filename>>, <remove <filename>>, <deploy>, <log>.";
                 write(clientSock, errorMsg.c_str(), errorMsg.length());
             }

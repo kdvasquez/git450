@@ -1,11 +1,13 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
-#include <arpa/inet.h>
+#include <arpa/inet.h> // for the local host
 #include <unistd.h>
 using namespace std;
+
 #define PORT_A_UDP 21985
 #define BUFFER_SIZE 1024
+#define HOST_NAME "127.0.0.1"
 
 // Encryption function (must match client encryption)
 string encryptPassword(const std::string &password) {
@@ -43,7 +45,7 @@ bool authenticate(const std::string &username, const std::string &encryptedPassw
         }
     }
 
-    return false; // Credentials don't match
+    return false; // Credentials don't match!
 }
 
 int main() {
@@ -52,6 +54,7 @@ int main() {
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
 
+    // Socket/Binding Creation - Courtesy of GeeksforGeeks
     // Create A's UDP socket
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
@@ -62,7 +65,8 @@ int main() {
     // Configure serverA's address
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(PORT_A_UDP);
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_addr.s_addr = inet_addr(HOST_NAME); // Hardcode localhost 121.0.0.1
+
 
     // Bind the socket
     if (bind(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
@@ -71,7 +75,7 @@ int main() {
         return -1;
     }
 
-    std::cout << "Server A is up and running using UDP on port " << PORT_A_UDP << std::endl;
+    cout << "Server A is up and running using UDP on port " << PORT_A_UDP << std::endl;
 
     while (true) {
         memset(buffer, 0, BUFFER_SIZE);

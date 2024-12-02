@@ -1,14 +1,16 @@
 #include <iostream>
 #include <fstream>
-#include <sys/socket.h>  // Socket functions
-#include <netinet/in.h>  // Address structures
-#include <unistd.h>      // Close function
-#include <cstring>       // String functions
-#include <sstream>       // String stream operations
+#include <sys/socket.h>  
+#include <arpa/inet.h>
+#include <netinet/in.h>  
+#include <unistd.h>     
+#include <cstring>       
+#include <sstream>       
 
 using namespace std;
 
 #define PORT_D_UDP 23985 // Set the UDP port number
+#define HOST_NAME "127.0.0.1"
 #define DEPLOYED_FILE "deployed.txt"
 
 int main() {
@@ -17,18 +19,18 @@ int main() {
     char buffer[1024] = {0}; // Buffer for receiving data
     int addrlen = sizeof(address);
 
-    // Step 1: Create UDP socket (AF_INET for IPv4, SOCK_DGRAM for UDP)
+    // Socket/Binding Creation - Courtesy of GeeksforGeeks
     serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (serverSocket < 0) {
         cout << "Socket creation failed!" << endl;
         return -1;
     }
-    // Step 2: Define the address structure for binding
+    // Define the address structure for binding
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT_D_UDP);
+    address.sin_addr.s_addr = inet_addr(HOST_NAME);
 
-    // Step 3: Bind the socket to the specified port
+    // Bind the socket to the specified port
     if (bind(serverSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
         cerr << "Binding failed!" << endl;
         close(serverSocket);
@@ -36,7 +38,7 @@ int main() {
     }
     cout << "Server D is up and running using UDP on port " << PORT_D_UDP << endl;
 
-    // Step 4: Wait to receive data (no listen/accept in UDP)
+    // Wait to receive data 
     while (true) {
         memset(buffer, 0, sizeof(buffer)); // Clear buffer before receiving
         
@@ -85,7 +87,7 @@ int main() {
         cout << "Server D has deployed the user " << username << "'s repository." << endl; //Deployed file: " << filename << " for user: " << username << endl;
     }
 
-    // Step 5: Close the socket after the loop
+    // Close the socket after the loop
     close(serverSocket);
     return 0;
 }

@@ -3,13 +3,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sstream>
-
+#include <algorithm>
+using namespace std;
 
 #define BUFFER_SIZE 1024
 #define SERVER_M "127.0.0.1" // Main server IP (localhost)
-using namespace std;
 
-// Function to encrypt the password (found using Caesar Cipher algorithm)
+// Function to encrypt the password using given algorithm
 string encryptPassword(const string &password) {
     string encrypted;
     for (char c : password) {
@@ -65,12 +65,11 @@ int main(int argc, char *argv[]) {
     // GUEST user has limited access
     if (string(username) == "guest" && password == "guest") {
         cout << "You have been granted guest access. " << endl;
+        cout << "\nPlease enter the command:\n"
+                << "1. <lookup <username>>" << endl;
         
         // Guest command input loop
-        while (true) {
-            cout << "\nPlease enter the command:\n"
-                 << "1. lookup <username>" << endl;
-            
+        while (true) {        
             char commandBuffer[BUFFER_SIZE];
             cin.getline(commandBuffer, BUFFER_SIZE);
             string command(commandBuffer);
@@ -79,7 +78,7 @@ int main(int argc, char *argv[]) {
             command.erase(command.find_last_not_of(" \n\r\t") + 1);
             
             if (command == "exit") {
-                cout << "Exiting the client. Goodbye!" << endl;
+                cout << "Exiting the client. Au revoir!" << endl;
                 break;
             }
             if (command.substr(0, 6) != "lookup") {
@@ -109,12 +108,11 @@ int main(int argc, char *argv[]) {
                 cout << "Empty repository." << endl;
                 cout << "---Start a new request---" << endl;
             }
-            // Handle different response scenarios NOT WORKING RIGHT NOW???
+            // Handle different response scenarios
             if (response.find("does not exist") != string::npos) {
                 cout << lookupUsername << " does not exist. Please try again." << endl;
-            } else if (response == "Empty repository.") {
-                cout << "Empty repository." << endl;
-            } else {
+            } 
+            else {
                 cout << response << endl;
             }
             
@@ -135,17 +133,15 @@ int main(int argc, char *argv[]) {
     
     if (string(buffer) == "AUTH_SUCCESS") {
         cout << "You have been granted member access." << endl;
-        
+        cout << "\nPlease enter the command:\n"
+                << "<lookup <username>>\n"
+                << "<push <filename>>\n"
+                << "<remove <filename>>\n"
+                << "<deploy>\n"
+                << "<log>\n"
+                << "Enter your command (or 'exit' to quit): ";
         // Member command input loop 
-        while (true) {
-            cout << "\nPlease enter the command:\n"
-                 << "1. lookup <username>\n"
-                 << "2. push <filename>\n"
-                 << "3. remove <filename>\n"
-                 << "4. deploy\n"
-                 << "5. log\n"
-                 << "Enter your command (or 'exit' to quit): ";
-            
+        while (true) {     
             char commandBuffer[BUFFER_SIZE];
             cin.getline(commandBuffer, BUFFER_SIZE);
             string command(commandBuffer);
@@ -160,32 +156,85 @@ int main(int argc, char *argv[]) {
             
             // Command on-screen messages
             if (command.substr(0, 6) == "lookup") {
-                cout << username << " sent a lookup request to the main server." << endl;
                 if(command.substr(6).empty()){
                     cout << "Username is not specified. Will lookup " << username << endl;
-                    //command = username + " " + "lookup";
                 }
             }
             else if (command.substr(0, 4) == "push") {
-                // push command logic???
+                // Check if filename is specified
+                if (command.length() <= 5) {  // "push " is 5 characters
+                    cout << "Error: Filename is required. Please specify a filename to push." << endl;
+                    cout << "---Start a new request---" << endl;
+                    continue;
+                }
+
+                // Extract filename
+                string filename = command.substr(5);
+                
+                // Validate filename???
+                if (filename.empty() || filename.find_first_of("\\/") != string::npos) {
+                    cout << "Error: Invalid file: " << filename << endl;
+                    cout << "---Start a new request---" << endl;
+                    continue;
+                }
+
             }
             else if (command.substr(0, 6) == "remove") {
-                cout << username << " sent a remove request to the main server." << endl; //using TCP over port 25985. " << endl;
+                cout << username << " sent a remove request to the main server." << endl;
             }
             else if (command.substr(0, 6) == "deploy") {
                 cout << username << " sent a lookup request to the main server. " << endl;
             }
+            else if (command.substr(0,3) == "log"){
+                cout << username << " sent a log request to the main server. " << endl;
+            }
             
-            // Send command
+            // Send command to serverM
             write(sock, command.c_str(), command.length());
             
-            // Receive response
+            // Receive response from serverM
             memset(buffer, 0, BUFFER_SIZE);
             read(sock, buffer, BUFFER_SIZE);
+            string response(buffer);
             
-            // Display response
-            cout << "The client received the response from the main server using TCP over port 25985: " << buffer << endl;
-            //cout << "The " << command << " request was successful. " << endl;
+            // Handle push overwrite case 
+            if (command.substr(0, 4) == "push") {
+                string filename = command.substr(5);
+                
+                if (response == "FILE_EXISTS") {
+                    // Prompt for overwrite confirmation
+                    cout << filename << " exists in " << username << "'s repository, do you want to overwrite (Y/N)? ";
+                    
+                    string overwriteChoice;
+                    getline(cin, overwriteChoice);
+                    
+                    if (overwriteChoice == "Y") {
+                        cout << filename << " pushed successfully. " << endl;
+                        // Send overwrite confirmation
+                        write(sock, "OVERWRITE_YES", strlen("OVERWRITE_YES"));
+                        
+                        // Receive final push result
+                        memset(buffer, 0, BUFFER_SIZE);
+                        read(sock, buffer, BUFFER_SIZE);
+               
+                    } else {
+                        cout << filename << " was not pushed successfully." << endl;
+                        // Send overwrite denial
+                        write(sock, "OVERWRITE_NO", strlen("OVERWRITE_NO"));
+                    }
+                }
+                else if (response == "FILE_ADDED") {
+                    cout << filename << " pushed successfully." << endl;
+                } 
+                //else {
+                    // Unexpected outcomes?
+                  //  cout << filename << " was not pushed successfully." << endl;
+                //}
+            } else {
+                // Display response for other commands
+                cout << "The client received the response from the main server using TCP over port 25985: " << buffer << endl;
+            }
+            
             cout << "---Start a new request---" << endl;
         }
     } else {

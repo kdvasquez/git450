@@ -6,14 +6,53 @@
 #include <unistd.h>
 #include <vector>
 #include <algorithm>
+#include <ctime>
 
 #define PORT_R_UDP 22985  
 #define BUFFER_SIZE 1024
+#define HOST_NAME "127.0.0.1"
 #define FILENAME_FILE "filenames.txt" 
+#define LOG_FILE "user_log.txt"
 
 using namespace std;
 
-// Function to search for user's files in filenames.txt
+// Function to keep track of log
+void addLogEntry(const string &username, const string &action) {
+    ofstream logFile(LOG_FILE, ios::app);
+    time_t now = time(0);
+    char* dt = ctime(&now);
+    string timestamp(dt);
+    // Remove newline from timestamp
+    timestamp.erase(timestamp.length() - 1);
+    
+    logFile << username << " " << action << " " << timestamp << endl;
+    logFile.close();
+}
+
+// Function to retrieve log entries for a user
+vector<string> getUserLogEntries(const string &username) {
+    vector<string> logEntries;
+    ifstream logFile(LOG_FILE);
+    string line;
+    
+    while (getline(logFile, line)) {
+        istringstream iss(line);
+        string logUsername, action, timestamp;
+        
+        // Extract username, action, and full timestamp
+        if (iss >> logUsername >> action) {
+            // Get the rest of the line as timestamp
+            getline(iss, timestamp);
+            
+            if (logUsername == username) {
+                // Reconstruct log entry
+                logEntries.push_back(action + " " + timestamp);
+            }
+        }
+    }
+    
+    return logEntries;
+} 
 vector<string> getFilesForUser(const string &username) {
     vector<string> files;
     ifstream file(FILENAME_FILE);
@@ -30,15 +69,13 @@ vector<string> getFilesForUser(const string &username) {
     return files;
 }
 
-// Function to check if a file exists for a username
 bool fileExists(const string &username, const string &filename) {
     vector<string> userFiles = getFilesForUser(username);
     return find(userFiles.begin(), userFiles.end(), filename) != userFiles.end();
 }
 
-// Function to remove a file for a specific user
 bool removeFileForUser(const string &username, const string &filename) {
-    // Read the entire file
+    // Reads entire file
     ifstream inputFile(FILENAME_FILE);
     vector<string> lines;
     string line;
@@ -74,6 +111,7 @@ int main() {
     char buffer[BUFFER_SIZE];
     socklen_t clientLen = sizeof(clientAddr);
 
+    // Socket/Binding Creation - Courtesy of GeeksforGeeks
     // Create serverR's UDP socket
     udpSock = socket(AF_INET, SOCK_DGRAM, 0);
     if (udpSock < 0) {
@@ -81,14 +119,10 @@ int main() {
         return -1;
     }
 
-    // Add socket reuse option
-    //int optval = 1;
-    //setsockopt(udpSock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-
     // Configure server address
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(PORT_R_UDP);
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_addr.s_addr = inet_addr(HOST_NAME); // Hardcode localhost 121.0.0.1
 
     // Bind the UDP socket
     if (bind(udpSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
@@ -110,13 +144,15 @@ int main() {
 
         string request(buffer);
 
-        // Existing lookup handling remains the same...
+        // Existing commands (lookup, push, remove, deploy, log)
         if (request.find("lookup") != string::npos) {
             cout << "Server R has received a lookup request from main server. " << endl;
-            // [Previous lookup code remains unchanged]
             stringstream ss(request);
             string command, username;
             ss >> command >> username;
+
+            // Log the lookup action
+            addLogEntry(username, "LOOKUP");
 
             // Get the files associated with the username
             vector<string> files = getFilesForUser(username);
@@ -124,10 +160,9 @@ int main() {
             // Prepare response
             string response;
             if (files.empty()) {
-                response = "Username not found!";
+                response = username + " does not exist. Please try again."; // Username not found!";
             } else {
-                response = "Files for " + username + ":\n";
-                for (const string &file : files) {
+                for (const string &file : files) { // Preparing the list of files to show in client as response
                     response += file + "\n";
                 }
             }
@@ -137,7 +172,7 @@ int main() {
             if (sent < 0) {
                 perror("Failed to send response");
             } else {
-                cout << "Server R has finished sending the response to the main server. " << endl; // << response << endl;
+                cout << "Server R has finished sending the response to the main server. " << endl;
             }
         }
         else if (request.substr(0, 4) == "push") {
@@ -147,12 +182,15 @@ int main() {
             string pushCmd, username, filename;
             iss >> pushCmd >> username >> filename;
 
+            // Log the push action
+            addLogEntry(username, "PUSH " + filename);
+
             // Check if file already exists for this user
             bool exists = fileExists(username, filename);
 
             if (exists) {
                 // Send FILE_EXISTS back to ServerM
-                cout << filename << " exists in " << username << "'s repository; requesting overwrite information. " << endl;
+                cout << filename << " exists in " << username << "'s repository; requesting overwrite confirmation. " << endl;
                 string response = "FILE_EXISTS";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
 
@@ -160,28 +198,32 @@ int main() {
                 memset(buffer, 0, BUFFER_SIZE);
                 recvfrom(udpSock, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&clientAddr, &clientLen);
                 string overwriteDecision(buffer);
+                cout << "This is what is in buffer " << buffer << endl;
 
                 if (overwriteDecision == "OVERWRITE_YES") {
                     // If overwrite is allowed
                     cout << "User requested overwrite; overwrite successful. " << endl;
                     string response = "File push successful.";
                     sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
+                    
+                    // Log the overwrite action
+                    addLogEntry(username, "OVERWRITE " + filename);
                 } else {
                     cout << "Overwrite denied" << endl;
-                    string response = "File push canceled.";
+                    string response = "File push unsuccesful";
                     sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
                 }
-            } else {
+            } 
+            else {
                 // Add file to user's repository (add entry to filenames.txt)
                 ofstream file(FILENAME_FILE, ios::app);
                 file << username << " " << filename << endl;
                 file.close();
 
-                cout << filename << " uploaded sucessfully." << endl;
+                cout << filename << " pushed successfully." << endl;
                 string response = "FILE_ADDED";
                 sendto(udpSock, response.c_str(), response.size(), 0, (struct sockaddr *)&clientAddr, clientLen);
             }
-
         }
         else if (request.substr(0, 6) == "remove") {
             cout << "Server R has received a remove request from the main server. " << endl;
@@ -189,6 +231,9 @@ int main() {
             istringstream iss(request);
             string removeCmd, username, filename;
             iss >> removeCmd >> username >> filename;
+
+            // Log the remove action
+            addLogEntry(username, "REMOVE " + filename);
 
             // Check if file exists for this user
             bool exists = fileExists(username, filename);
@@ -217,6 +262,9 @@ int main() {
             string deployCmd, username;
             iss >> deployCmd >> username;
 
+            // Log the deploy action
+            addLogEntry(username, "DEPLOY");
+
             // Get the files associated with the username
             vector<string> files = getFilesForUser(username);
     
@@ -225,7 +273,6 @@ int main() {
             if (files.empty()) {
                 response = username + " does not exist. Please try again.";
             } else {
-                //response = "Files for " + username + ":\n";
                 for (const string &file : files) {
                     response += file + "\n";
                 }
@@ -239,6 +286,36 @@ int main() {
             } else {
                 // Log that the response has been sent
                 cout << "Server R has finished sending the response to the main server." << endl;
+            }
+        }
+        else if (request.substr(0, 3) == "log") {
+            cout << "Server R has received a log request from the main server. " << endl;
+            // Extract the username from the log request
+            istringstream iss(request);
+            string logCmd, username;
+            iss >> logCmd >> username;
+
+            // Retrieve log entries for the user
+            vector<string> logEntries = getUserLogEntries(username);
+
+            // Prepare response
+            string response;
+            if (logEntries.empty()) {
+                response = "No log entries found for " + username;
+            } else {
+                response = "Log history for " + username + ":\n";
+                for (const string &entry : logEntries) {
+                    response += entry + "\n";
+                }
+            }
+
+            // Send the response back to serverM
+            ssize_t sent = sendto(udpSock, response.c_str(), response.size(), 0, 
+                          (struct sockaddr *)&clientAddr, clientLen);
+            if (sent < 0) {
+                perror("Failed to send response");
+            } else {
+                cout << "Server R has finished sending the log response to the main server." << endl;
             }
         }
     }
