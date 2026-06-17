@@ -64,6 +64,11 @@ int main(int argc, char *argv[]) {
 
     // GUEST user has limited access
     if (string(username) == "guest" && password == "guest") {
+        string guestRequest = "guest guest";
+        write(sock, guestRequest.c_str(), guestRequest.size());
+        memset(buffer, 0, BUFFER_SIZE);
+        read(sock, buffer, BUFFER_SIZE);
+
         cout << "You have been granted guest access. " << endl;
         cout << "\nPlease enter the command:\n"
                 << "1. <lookup <username>>" << endl;
@@ -212,16 +217,14 @@ int main(int argc, char *argv[]) {
                         cout << filename << " pushed successfully. " << endl;
                         // Send overwrite confirmation
                         write(sock, "OVERWRITE_YES", strlen("OVERWRITE_YES"));
-                        
-                        // Receive final push result
-                        memset(buffer, 0, BUFFER_SIZE);
-                        read(sock, buffer, BUFFER_SIZE);
-               
                     } else {
                         cout << filename << " was not pushed successfully." << endl;
                         // Send overwrite denial
                         write(sock, "OVERWRITE_NO", strlen("OVERWRITE_NO"));
                     }
+
+                    memset(buffer, 0, BUFFER_SIZE);
+                    read(sock, buffer, BUFFER_SIZE);
                 }
                 else if (response == "FILE_ADDED") {
                     cout << filename << " pushed successfully." << endl;

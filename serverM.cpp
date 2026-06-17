@@ -46,7 +46,7 @@ int main() {
     serverUDPAddr.sin_addr.s_addr = INADDR_ANY;
 
     // Bind serverM's UDP socket
-    if (bind(udpSockM, (struct sockaddr *)&serverUDPAddr, sizeof(serverUDPAddr)) < 0) {
+    if (::bind(udpSockM, (struct sockaddr *)&serverUDPAddr, sizeof(serverUDPAddr)) < 0) {
         perror("UDP Bind failed");
         close(udpSockM);
         close(tcpSock);
@@ -60,7 +60,7 @@ int main() {
     serverTCPAddr.sin_addr.s_addr = INADDR_ANY;
 
     // Bind serverM's TCP socket
-    if (bind(tcpSock, (struct sockaddr *)&serverTCPAddr, sizeof(serverTCPAddr)) < 0) {
+    if (::bind(tcpSock, (struct sockaddr *)&serverTCPAddr, sizeof(serverTCPAddr)) < 0) {
         perror("TCP Bind failed");
         close(udpSockM);
         close(tcpSock);
@@ -94,38 +94,44 @@ int main() {
             string username = authRequest.substr(0, spacePos);
             string password = authRequest.substr(spacePos + 1);
 
-            // Store the authenticated username
             currAuthenticatedUsername = username;
 
-            cout << "Server M has received username " << username << " and password ****." << endl;
+            if (username == "guest" && password == "guest") {
+                const char *guestResponse = "GUEST_ACCESS";
+                write(clientSock, guestResponse, strlen(guestResponse));
+                cout << "Server M has granted guest access." << endl;
+            } else {
 
-            // Create serverA's UDP socket 
-            int udpSockA = socket(AF_INET, SOCK_DGRAM, 0);
-            if (udpSockA < 0) {
-                perror("UDP socket creation failed for Server A");
-                close(clientSock);
-                continue;
-            }
+                cout << "Server M has received username " << username << " and password ****." << endl;
 
-            serverAAddr.sin_family = AF_INET;
-            serverAAddr.sin_port = htons(PORT_A_UDP);
-            serverAAddr.sin_addr.s_addr = inet_addr(HOST_NAME);
+                // Create serverA's UDP socket 
+                int udpSockA = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udpSockA < 0) {
+                    perror("UDP socket creation failed for Server A");
+                    close(clientSock);
+                    continue;
+                }
 
-            cout << "Server M has sent authentication request to Server A " << endl;
-            sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
+                serverAAddr.sin_family = AF_INET;
+                serverAAddr.sin_port = htons(PORT_A_UDP);
+                serverAAddr.sin_addr.s_addr = inet_addr(HOST_NAME);
 
-            memset(buffer, 0, BUFFER_SIZE);
-            socklen_t serverALen = sizeof(serverAAddr);
-            recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
+                cout << "Server M has sent authentication request to Server A " << endl;
+                sendto(udpSockA, buffer, strlen(buffer), 0, (struct sockaddr *)&serverAAddr, sizeof(serverAAddr));
 
-            cout << "The main server has received the response from Server A using UDP over " << PORT_M_UDP << endl; //":" << buffer << endl;
-            write(clientSock, buffer, strlen(buffer));
-            cout << "The main server has sent the response from Server A to client using TCP over port " << PORT_M_TCP << "." << endl;
-            close(udpSockA);
+                memset(buffer, 0, BUFFER_SIZE);
+                socklen_t serverALen = sizeof(serverAAddr);
+                recvfrom(udpSockA, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAAddr, &serverALen);
 
-            if (string(buffer) != "AUTH_SUCCESS") {
-                close(clientSock);
-                continue;
+                cout << "The main server has received the response from Server A using UDP over " << PORT_M_UDP << endl; //":" << buffer << endl;
+                write(clientSock, buffer, strlen(buffer));
+                cout << "The main server has sent the response from Server A to client using TCP over port " << PORT_M_TCP << "." << endl;
+                close(udpSockA);
+
+                if (string(buffer) != "AUTH_SUCCESS") {
+                    close(clientSock);
+                    continue;
+                }
             }
         }
 
@@ -164,8 +170,13 @@ int main() {
                 serverRAddr.sin_port = htons(PORT_R_UDP);
                 serverRAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
                 
+                string lookupCommand = command;
+                if (lookupCommand == "lookup") {
+                    lookupCommand += " " + currAuthenticatedUsername;
+                }
+
                 // Forward lookup request to serverR
-                sendto(udpSockR, command.c_str(), command.length(), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+                sendto(udpSockR, lookupCommand.c_str(), lookupCommand.length(), 0, (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
                 cout << "The main server has sent the lookup request to server R" << endl;
 
                 memset(buffer, 0, BUFFER_SIZE);
@@ -208,6 +219,20 @@ int main() {
                 cout << "The main server has received the response from server R using UDP over port 24985 " << endl; // << buffer << endl;
                 write(clientSock, buffer, strlen(buffer));
                 cout << "The main server has sent the response to the client. " << endl;
+
+                if (string(buffer) == "FILE_EXISTS") {
+                    memset(buffer, 0, BUFFER_SIZE);
+                    ssize_t overwriteBytes = recv(clientSock, buffer, BUFFER_SIZE - 1, 0);
+                    if (overwriteBytes > 0) {
+                        buffer[overwriteBytes] = '\0';
+                        sendto(udpSockR, buffer, strlen(buffer), 0,
+                               (struct sockaddr *)&serverRAddr, sizeof(serverRAddr));
+
+                        memset(buffer, 0, BUFFER_SIZE);
+                        recvfrom(udpSockR, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverRAddr, &serverRLen);
+                        write(clientSock, buffer, strlen(buffer));
+                    }
+                }
                 close(udpSockR);
             }
             else if (command.substr(0, 6) == "remove") {
@@ -302,7 +327,6 @@ int main() {
                 vector<string> files;
                 istringstream iss(lookupResponse);
                 string line;
-                getline(iss, line);  // Skips the first line "Files for username:"
                 while (getline(iss, line)) {
                     if (!line.empty()) {
                         files.push_back(line);
@@ -324,7 +348,7 @@ int main() {
                 }
 
                 // Prepare and send final response to client
-                string successMsg = "Deployment completed."; //to_string(files); //"Deployment completed. " + to_string(files.size()) + " files deployed.";
+                string successMsg = "Deployment completed. " + to_string(files.size()) + " file(s) deployed.";
                 write(clientSock, successMsg.c_str(), successMsg.length());
 
                 // Close sockets

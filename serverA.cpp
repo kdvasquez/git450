@@ -69,7 +69,7 @@ int main() {
 
 
     // Bind the socket
-    if (bind(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+    if (::bind(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("Bind failed");
         close(sockfd);
         return -1;

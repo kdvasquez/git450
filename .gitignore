@@ -3,3 +3,8 @@ serverA
 serverM
 serverD
 serverR
+*.o
+deployed.txt
+user_log.txt
+.DS_Store
+.vscode/

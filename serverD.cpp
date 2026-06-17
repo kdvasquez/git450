@@ -31,7 +31,7 @@ int main() {
     address.sin_addr.s_addr = inet_addr(HOST_NAME);
 
     // Bind the socket to the specified port
-    if (bind(serverSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
+    if (::bind(serverSocket, (struct sockaddr*)&address, sizeof(address)) < 0) {
         cerr << "Binding failed!" << endl;
         close(serverSocket);
         return -1;

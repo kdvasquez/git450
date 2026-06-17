@@ -1,117 +1,168 @@
-USC EE450 (Computer Networks) Final Project
+# USC EE450 Computer Networks Final Project
 
-(a) Name: Karla Vasquez
-(b) Student ID: 3166059985
+## Author
 
-(c) What have I done in this assignment?
-I have implemented all expected files, (client.cpp, serverM.cpp, serverA.cpp, serverR.cpp, serverD.cpp), and the extra credit log command. 
+Karla Vasquez
 
-General overview of what I implemented: users can access the client program as a member or as a guest. It displays options for lookup, push, remove, deploy, and log, and sends these requests to the main server, Server M. Server M will acknowledge if requests were forwarded successfully (lookup, remove, and deploy are forwarded to Server R and Server D). Server A is sent the user's login credentials to determine if they’re a member or a guest. Server M will return the list of file names associated with a given user. 
+## Overview
 
+This project implements a distributed GitHub-like repository service using TCP and UDP sockets in C++. Users connect through a client as either a member or a guest. Member users can authenticate, look up repositories, push files, remove files, deploy their repository, and view an action log. Guest users can look up public repository contents only.
 
-(d) My github450 final projects contains the following files:
+The system is split into one client, one main server, and three backend servers:
 
-client.cpp - this does not use any static ports; it uses two dynamic TCP ports to communicate with the main server, serverM. It’s in charge of taking in the command line inputs <username> password or guest guest to determine whether the user is logging in as a member or guest. client then provides a menu of options showing how to further run commands on the terminal. All commands are forwarded to serverM, who will be in charge of forwarding to its respective server. All commands have a different function. At the end, the client returns confirmation messages on screen verifying when the client successfully sent a message to serverM, and when serverM has returned the response. 
+- `client.cpp` - connects to Server M over TCP, handles login, displays the command menu, sends user commands, and prints responses.
+- `serverM.cpp` - main server. It accepts TCP connections from clients and coordinates requests with the backend servers over UDP.
+- `serverA.cpp` - authentication server. It checks encrypted member credentials against `members.txt`.
+- `serverR.cpp` - repository server. It manages file lookup, push, remove, deploy lookup data, and log history.
+- `serverD.cpp` - deployment server. It receives deployment records and writes deployed files to `deployed.txt`.
 
-serverM.cpp - this uses a UDP port over port# 24985, and a TCP port over port#25985 when forwarding back to the client. It is the main server that handles sending and receiving between client and the three backend servers.
+## Features
 
-serverA.cpp - this is the authentication server, which includes an appropriate encryption function to take in the password. serverA only outputs messages for member users, and is briefly used at the start just to confirm whether the member user successfully logged in or not.  
+- Member authentication using encrypted passwords.
+- Guest access with lookup-only permissions.
+- Repository lookup by username.
+- File push with duplicate-file overwrite confirmation.
+- File removal from a member repository.
+- Repository deployment to Server D.
+- Per-user command logging through the `log` command.
 
-serverR.cpp - this is the repository server. When serverM forwards either a “lookup”, “remove”, “push”, or “deploy” request, serverR must either check filenames.txt for the user’s files and send back all the names associated with the user to serverM, remove any specified file from filenames.txt with the user’s name, add a file with the user’s name, and put together all files with the user’s name to “deploy” meaning it’s sent to serverD. 
+## Files
 
-serverD.cpp - this is the deployment server. When serverR sends the signal to serverD, serverD gathers all the filenames sent from serverR and produces the deployed.txt file. Prints out appropriate messages on screen confirming the procedure. 
+Source files:
 
-Text files:
-members.txt - list of member names with the encrypted version of their password
-original.txt - list of member names with the unencrypted version of their password
-deployed.txt - produced when program is executed using “deploy” command
-user_log.txt - produced when “log” command is executed
-Makefile - compiles all files 
+- `client.cpp`
+- `serverM.cpp`
+- `serverA.cpp`
+- `serverR.cpp`
+- `serverD.cpp`
+- `Makefile`
 
-(e) The format of all messages exchanged: 
+Data files:
 
-Request command sent to serverR by serverM:
-lookup <username>
-remove <filename>
-deploy 
+- `original.txt` - plaintext member credentials for testing.
+- `members.txt` - encrypted member credentials used by Server A.
+- `filenames.txt` - initial repository contents.
 
-Request command sent to serverD by serverM:
-deploy
+Runtime-generated files:
 
-Request command sent to serverR by serverM:
-log 
+- `deployed.txt` - created or appended to when a member runs `deploy`.
+- `user_log.txt` - created or appended to when repository actions are logged.
 
-Request command sent to serverA by serverM:
-./client <username> password
+## Ports
 
-If using UDP, it typically followed this code structure, courtesy of GeeksforGeeks : 
-// Create UDP socket
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
-        perror("Socket creation failed");
-        return -1;
-    }
+The project uses localhost (`127.0.0.1`) with the following ports:
 
-    // Configure server’s address
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(PORT_A_UDP);
-    serverAddr.sin_addr.s_addr = inet_addr(HOST_NAME); // Hardcode localhost 121.0.0.1
+- Server A UDP: `21985`
+- Server R UDP: `22985`
+- Server D UDP: `23985`
+- Server M UDP: `24985`
+- Server M TCP: `25985`
 
+## Build
 
-    // Bind the socket
-    if (bind(sockfd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Bind failed");
-        close(sockfd);
-        return -1;
-    }
+Compile all executables with:
 
-In order to run on terminal: 
-make all 
-Open up six terminals, and run the following commands in this order:
-./serverM
+```bash
+make all
+```
+
+Clean generated executables with:
+
+```bash
+make clean
+```
+
+## Run
+
+Open separate terminal windows or tabs from the project directory and start the servers:
+
+```bash
 ./serverA
 ./serverR
 ./serverD
-./client <username> password
-./client guest guest 
+./serverM
+```
 
-One of the client terminals runs as a member; the second client terminal runs as a guest. 
-For member users, you retrieve the username and password from the originals.txt file, where you may select any member when running the client program as a member. It is important you retrieve the password from here as other txt file (members.txt) will contain member information in it’s encrypted form and will not work as the authentication server (./serverA) is comparing the passwords up against the members.txt file. If you run the client program as a guest, you will only have access to the “lookup” command in the provided menu. 
+Then start a member client using a username and plaintext password from `original.txt`:
 
+```bash
+./client <username> <password>
+```
 
-(g) Idiosyncrasies 
- 
-No on screen messages for the following events: 
-Lookup Command for serverM:
-Event: Upon receiving a lookup request from guest
-Event: After forwarding the overwrite confirmation request to the client
-Event: After forwarding the overwrite confirmation response to server R
+Example:
 
-Push Command for serverM:
-Event: Upon receiving overwrite confirmation response from client
-Event: After forwarding the overwrite confirmation request to the client
-Event: After forwarding the overwrite confirmation response to server R
+```bash
+./client HannahWilliams598 pQQdZC2e2pjQ
+```
 
-Lookup Command for Client (Guest):
-Event: After receiving the response from the main server (the username exists):
-Event: After receiving the response from the main server (the username does not exist):
-Event: After receiving the response from the main server (the repo is empty): 
+To start a guest client:
 
-Known issues that may arise:
-Remove Command: 
+```bash
+./client guest guest
+```
 
-Only removes files already in the filenames.txt for that user before you push new ones. If you add a file, like “EE450ProjectFile_77,” it won’t be removed right away until the next couple of remove commands mysteriously. 
-Deploy Command:
-It’s buggy, it’ll deploy after a couple of push commands or at the very start if there are actually files to be deployed. 
+## Client Commands
 
+Members can run:
 
-(h) I reused code:
-For the UDP/TCP socket creation and binding from GeekForGeeks and Beej's Guide: 
-https://www.geeksforgeeks.org/socket-programming-in-cpp/
-http://www.beej.us/guide/bgnet/ 
+```text
+lookup <username>
+lookup
+push <filename>
+remove <filename>
+deploy
+log
+exit
+```
 
-For encryption algorithm: Stack Overflow
+Notes:
 
-A lot of googling~
+- `lookup <username>` returns the files associated with that user.
+- `lookup` with no username defaults to the authenticated member's own repository.
+- `push <filename>` adds a file to the member's repository.
+- If a pushed filename already exists, the client asks whether to overwrite it.
+- `remove <filename>` removes the file from the member's repository if it exists.
+- `deploy` sends all files in the authenticated member's repository to Server D.
+- `log` returns the authenticated member's repository action history.
 
-For Makefile: Replaced with my filenames from templates: https://www.cs.swarthmore.edu/~newhall/unixhelp/howto_makefiles.html
+Guests can run:
+
+```text
+lookup <username>
+exit
+```
+
+## Message Flow
+
+Client to Server M uses TCP. Server M communicates with backend servers over UDP:
+
+- Authentication: Client -> Server M -> Server A -> Server M -> Client
+- Lookup: Client -> Server M -> Server R -> Server M -> Client
+- Push: Client -> Server M -> Server R -> Server M -> Client
+- Push overwrite: Server R -> Server M -> Client -> Server M -> Server R
+- Remove: Client -> Server M -> Server R -> Server M -> Client
+- Deploy: Client -> Server M -> Server R, then Server M -> Server D
+- Log: Client -> Server M -> Server R -> Server M -> Client
+
+## Fixes and Current Status
+
+The current version builds and runs on macOS/Linux-style C++ environments and includes fixes for the previous known issues:
+
+- Socket `bind` calls now compile correctly on macOS.
+- Guest login is handled explicitly by Server M.
+- Member `lookup` without a username now looks up the authenticated user's repository.
+- Push overwrite confirmation is forwarded correctly between Client, Server M, and Server R.
+- Remove works immediately for newly pushed files.
+- Deploy includes every repository file returned by Server R instead of skipping the first entry.
+- The malformed repository row in `filenames.txt` was removed.
+
+## References
+
+Socket programming structure was adapted from:
+
+- https://www.geeksforgeeks.org/socket-programming-in-cpp/
+- https://beej.us/guide/bgnet/
+
+The Makefile structure was adapted from:
+
+- https://www.cs.swarthmore.edu/~newhall/unixhelp/howto_makefiles.html

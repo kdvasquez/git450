@@ -125,7 +125,7 @@ int main() {
     serverAddr.sin_addr.s_addr = inet_addr(HOST_NAME); // Hardcode localhost 121.0.0.1
 
     // Bind the UDP socket
-    if (bind(udpSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+    if (::bind(udpSock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
         perror("Bind failed");
         close(udpSock);
         return -1;
