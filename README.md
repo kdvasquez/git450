@@ -4,6 +4,9 @@
 
 Karla Vasquez
 
+## Network Illustration
+![Architecture Diagram](https://github.com/user-attachments/assets/7e467dbb-5826-4ff1-a239-829825cc2dea)
+
 ## Overview
 
 This project implements a distributed GitHub-like repository service using TCP and UDP sockets in C++. Users connect through a client as either a member or a guest. Member users can authenticate, look up repositories, push files, remove files, deploy their repository, and view an action log. Guest users can look up public repository contents only.
